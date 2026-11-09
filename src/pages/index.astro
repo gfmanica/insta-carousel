@@ -1,0 +1,26 @@
+---
+import '../styles/global.css';
+import { CarouselStudio } from '../components/CarouselStudio';
+---
+
+<!doctype html>
+<html lang="pt-BR" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>InstaCarousel — Editor de Carrossel & GIF</title>
+    <meta
+      name="description"
+      content="Editor local para carrosséis contínuos de Instagram e criação de GIFs animados."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body class="bg-studio-bg text-zinc-100 antialiased selection:bg-accent selection:text-white">
+    <CarouselStudio client:only="react" />
+  </body>
+</html>

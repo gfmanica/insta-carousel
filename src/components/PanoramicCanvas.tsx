@@ -559,7 +559,7 @@ export const PanoramicCanvas: React.FC<PanoramicCanvasProps> = ({
           onSelectLayer(null);
         }
       }}
-      className={`flex-1 bg-studio-bg overflow-auto relative flex items-center justify-start p-10 focus:outline-none transition-colors ${
+      className={`flex-1 bg-studio-bg overflow-auto relative flex items-center justify-start p-3 sm:p-6 md:p-10 focus:outline-none transition-colors ${
         isDraggingFileOver ? 'ring-2 ring-inset ring-accent bg-accent/5' : ''
       }`}
       style={{

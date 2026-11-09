@@ -236,7 +236,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
 
   if (!isOpen) {
     return (
-      <div className="w-8 bg-studio-panel border-l border-studio-border flex flex-col items-center py-2.5 gap-3 shrink-0 select-none z-10">
+      <div className="hidden md:flex w-8 bg-studio-panel border-l border-studio-border flex-col items-center py-2.5 gap-3 shrink-0 select-none z-10">
         <button
           type="button"
           onClick={onToggleOpen}
@@ -258,7 +258,7 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
   return (
     <aside
       style={{ width: `${width}px` }}
-      className="relative bg-studio-panel border-l border-studio-border flex flex-col shrink-0 select-none z-10 overflow-hidden"
+      className="fixed md:relative inset-y-0 right-0 max-w-[88vw] md:max-w-none bg-studio-panel border-l border-studio-border flex flex-col shrink-0 select-none z-40 md:z-10 overflow-hidden shadow-2xl md:shadow-none"
     >
       {/* Left Edge Horizontal Resizer */}
       <div

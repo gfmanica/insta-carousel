@@ -79,9 +79,9 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
   };
 
   return (
-    <header className="h-13 bg-studio-panel border-b border-studio-border px-3 flex items-center justify-between gap-2 shrink-0 z-20">
+    <header className="min-h-13 py-1.5 md:py-0 bg-studio-panel border-b border-studio-border px-2 sm:px-3 flex flex-wrap md:flex-nowrap items-center justify-between gap-1.5 sm:gap-2 shrink-0 z-30">
       {/* Left: Sidebar Toggle + Project Name + Undo/Redo */}
-      <div className="flex items-center gap-1.5 min-w-0">
+      <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 order-1">
         <button
           type="button"
           onClick={onToggleLeftSidebar}
@@ -99,7 +99,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
           <PanelLeft className="w-3.5 h-3.5" />
         </button>
 
-        <div className="flex items-center gap-2 px-1">
+        <div className="flex items-center gap-1.5 sm:gap-2 px-0.5 sm:px-1 min-w-0">
           <div className="w-6 h-6 rounded-md bg-white text-black flex items-center justify-center font-bold text-xs tracking-tighter shrink-0">
             IC
           </div>
@@ -117,14 +117,14 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
                 if (e.key === 'Enter') setEditingTitle(false);
               }}
               autoFocus
-              className="bg-studio-card text-xs font-medium text-white px-2 py-1 rounded border border-accent focus:outline-none w-36"
+              className="bg-studio-card text-xs font-medium text-white px-2 py-1 rounded border border-accent focus:outline-none w-28 sm:w-36"
             />
           ) : (
             <button
               type="button"
               onClick={() => setEditingTitle(true)}
               title="Renomear projeto"
-              className="text-xs font-medium text-zinc-200 hover:text-white px-1.5 py-1 rounded hover:bg-studio-hover transition-colors truncate max-w-[160px]"
+              className="text-xs font-medium text-zinc-200 hover:text-white px-1 sm:px-1.5 py-1 rounded hover:bg-studio-hover transition-colors truncate max-w-[96px] sm:max-w-[160px]"
             >
               {project.title}
             </button>
@@ -142,7 +142,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
           />
         </div>
 
-        <div className="h-4 w-[1px] bg-studio-border mx-0.5" />
+        <div className="h-4 w-[1px] bg-studio-border mx-0.5 hidden sm:block" />
 
         {/* Undo / Redo */}
         <div className="flex items-center gap-0.5">
@@ -168,9 +168,9 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
       </div>
 
       {/* Center: Format Selector, Slide Counter, Guides & Zoom */}
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto max-w-full w-full md:w-auto order-3 md:order-2 pb-0.5 md:pb-0 no-scrollbar justify-between md:justify-center">
         {/* Format Segmented Control */}
-        <div className="flex items-center bg-studio-bg p-0.5 rounded-lg border border-studio-border">
+        <div className="flex items-center bg-studio-bg p-0.5 rounded-lg border border-studio-border shrink-0">
           {(Object.keys(INSTAGRAM_FORMATS) as InstagramFormatId[]).map((fId) => {
             const fmt = INSTAGRAM_FORMATS[fId];
             const active = project.formatId === fId;
@@ -180,7 +180,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
                 type="button"
                 onClick={() => handleFormatChange(fId)}
                 title={fmt.description}
-                className={`btn-press px-2.5 py-1 rounded-md text-xs font-medium flex items-center gap-1 transition-colors ${
+                className={`btn-press px-2 sm:px-2.5 py-1 rounded-md text-xs font-medium flex items-center gap-1 transition-colors ${
                   active
                     ? 'bg-studio-card text-white shadow-xs border border-studio-border'
                     : 'text-zinc-400 hover:text-zinc-200'
@@ -196,8 +196,10 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         </div>
 
         {/* Slide Count Stepper */}
-        <div className="flex items-center gap-1 bg-studio-bg px-2 py-0.5 rounded-lg border border-studio-border h-[30px]">
-          <span className="text-[11px] text-zinc-400">Quadros</span>
+        <div className="flex items-center gap-1 bg-studio-bg px-1.5 sm:px-2 py-0.5 rounded-lg border border-studio-border h-[30px] shrink-0">
+          <span className="hidden sm:inline text-[11px] text-zinc-400">
+            Quadros
+          </span>
           <button
             type="button"
             onClick={() => handleSlidesCountChange(-1)}
@@ -231,7 +233,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
             }))
           }
           title="Mostrar/ocultar linhas de corte entre os quadros"
-          className={`btn-press h-[30px] px-2.5 rounded-lg text-xs font-medium flex items-center gap-1.5 border ${
+          className={`btn-press h-[30px] px-2 sm:px-2.5 rounded-lg text-xs font-medium flex items-center gap-1.5 border shrink-0 ${
             project.showSeamGuides
               ? 'bg-accent/10 text-accent border-accent/30'
               : 'bg-studio-bg text-zinc-400 border-studio-border hover:text-zinc-200'
@@ -241,12 +243,12 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
           <span className="hidden md:inline text-[11px]">Guias</span>
         </button>
 
-        {/* Zoom Controls */}
-        <div className="hidden lg:flex items-center bg-studio-bg px-1 rounded-lg border border-studio-border h-[30px]">
+        {/* Zoom Controls (Visible on both mobile & desktop) */}
+        <div className="flex items-center bg-studio-bg px-1 rounded-lg border border-studio-border h-[30px] shrink-0">
           <button
             type="button"
             onClick={() => setZoom((z) => Math.max(0.12, +(z - 0.05).toFixed(2)))}
-            title="Diminuir zoom (ou Ctrl + Scroll no canvas)"
+            title="Diminuir zoom"
             className="btn-press p-1 rounded text-zinc-400 hover:text-white"
           >
             <ZoomOut className="w-3.5 h-3.5" />
@@ -255,7 +257,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
             type="button"
             onClick={onFitToScreen}
             title="Ajustar zoom à tela"
-            className="text-[11px] font-mono text-zinc-300 hover:text-white px-1.5"
+            className="text-[11px] font-mono text-zinc-300 hover:text-white px-1"
           >
             {Math.round(zoom * 100)}%
           </button>
@@ -279,12 +281,12 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
       </div>
 
       {/* Right: Reset, GIF Studio, Export */}
-      <div className="flex items-center gap-1.5 shrink-0">
+      <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 order-2 md:order-3">
         <button
           type="button"
           onClick={onResetDemo}
           title="Restaurar composição de exemplo"
-          className="btn-press h-8 px-2.5 rounded-lg bg-studio-card hover:bg-studio-hover text-zinc-400 hover:text-zinc-200 border border-studio-border text-xs flex items-center gap-1.5"
+          className="btn-press h-8 px-2 sm:px-2.5 rounded-lg bg-studio-card hover:bg-studio-hover text-zinc-400 hover:text-zinc-200 border border-studio-border text-xs flex items-center gap-1.5"
         >
           <RotateCcw className="w-3.5 h-3.5" />
           <span className="hidden xl:inline">Resetar</span>
@@ -293,19 +295,20 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         <button
           type="button"
           onClick={onOpenGifModal}
-          className="btn-press h-8 px-3 rounded-lg bg-studio-card hover:bg-studio-hover text-zinc-100 border border-studio-border flex items-center gap-1.5 text-xs font-medium"
+          className="btn-press h-8 px-2 sm:px-3 rounded-lg bg-studio-card hover:bg-studio-hover text-zinc-100 border border-studio-border flex items-center gap-1.5 text-xs font-medium"
         >
           <Film className="w-3.5 h-3.5 text-zinc-400" />
-          <span>Criar GIF</span>
+          <span className="hidden sm:inline">Criar GIF</span>
+          <span className="sm:hidden">GIF</span>
         </button>
 
         <button
           type="button"
           onClick={onOpenExportModal}
-          className="btn-press h-8 px-3.5 rounded-lg bg-white hover:bg-zinc-200 text-zinc-950 flex items-center gap-1.5 text-xs font-semibold shadow-xs"
+          className="btn-press h-8 px-2.5 sm:px-3.5 rounded-lg bg-white hover:bg-zinc-200 text-zinc-950 flex items-center gap-1.5 text-xs font-semibold shadow-xs"
         >
           <Download className="w-3.5 h-3.5" />
-          <span>Exportar</span>
+          <span className="hidden sm:inline">Exportar</span>
         </button>
 
         <button

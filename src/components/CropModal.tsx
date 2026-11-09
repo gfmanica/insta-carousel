@@ -210,7 +210,7 @@ export const CropModal: React.FC<CropModalProps> = ({
       ref={dialogRef}
       {...({ closedby: 'any' } as React.DialogHTMLAttributes<HTMLDialogElement>)}
       aria-labelledby="crop-dialog-title"
-      className="w-[740px]"
+      className="w-[95vw] max-w-[740px]"
     >
       <div className="flex flex-col max-h-[88vh]">
         {/* Header */}

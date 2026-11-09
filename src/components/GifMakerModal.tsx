@@ -383,7 +383,7 @@ export const GifMakerModal: React.FC<GifMakerModalProps> = ({
       ref={dialogRef}
       {...({ closedby: 'any' } as React.DialogHTMLAttributes<HTMLDialogElement>)}
       aria-labelledby="gif-dialog-title"
-      className="w-[960px]"
+      className="w-[95vw] max-w-[960px]"
     >
       <div className="flex flex-col max-h-[90vh]">
         {/* Header */}

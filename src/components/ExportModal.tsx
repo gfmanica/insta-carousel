@@ -186,7 +186,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       ref={dialogRef}
       {...({ closedby: 'any' } as React.DialogHTMLAttributes<HTMLDialogElement>)}
       aria-labelledby="export-dialog-title"
-      className="w-[880px]"
+      className="w-[95vw] max-w-[880px]"
     >
       <div className="flex flex-col max-h-[88vh]">
         {/* Header */}

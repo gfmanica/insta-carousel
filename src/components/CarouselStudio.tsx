@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { Image as ImageIcon, SlidersHorizontal, Maximize2 } from 'lucide-react';
 import type {
   CarouselProject,
   CanvasLayer,
@@ -62,6 +63,10 @@ export const CarouselStudio: React.FC = () => {
   // Load persisted project from IndexedDB / localStorage on mount
   useEffect(() => {
     let active = true;
+    if (window.innerWidth < 768) {
+      setIsLeftSidebarOpen(false);
+      setIsRightSidebarOpen(false);
+    }
     loadProjectFromBrowser().then((loaded) => {
       if (!active) return;
       setProject(loaded);
@@ -69,6 +74,15 @@ export const CarouselStudio: React.FC = () => {
         setSelectedLayerId(loaded.layers[0].id);
       }
       setIsLoaded(true);
+      if (window.innerWidth < 768) {
+        const fmt = INSTAGRAM_FORMATS[loaded.formatId];
+        const totalW = fmt.width * loaded.slidesCount;
+        const totalH = fmt.height;
+        const availW = Math.max(260, window.innerWidth - 36);
+        const availH = Math.max(240, window.innerHeight - 170);
+        const nextZoom = Math.min(availW / totalW, availH / totalH, 0.85);
+        setZoom(Math.max(0.12, +nextZoom.toFixed(2)));
+      }
     });
     return () => {
       active = false;
@@ -327,13 +341,21 @@ export const CarouselStudio: React.FC = () => {
     const fmt = INSTAGRAM_FORMATS[projectRef.current.formatId];
     const totalW = fmt.width * projectRef.current.slidesCount;
     const totalH = fmt.height;
-    const occupiedSidebars =
-      (isLeftSidebarOpen ? leftSidebarWidth : 32) +
-      (isRightSidebarOpen ? rightSidebarWidth : 32);
-    const availW = Math.max(400, window.innerWidth - occupiedSidebars - 120);
-    const availH = Math.max(300, window.innerHeight - 52 - 140);
+    const isMobile = window.innerWidth < 768;
+    const occupiedSidebars = isMobile
+      ? 0
+      : (isLeftSidebarOpen ? leftSidebarWidth : 32) +
+        (isRightSidebarOpen ? rightSidebarWidth : 32);
+    const availW = Math.max(
+      260,
+      window.innerWidth - occupiedSidebars - (isMobile ? 36 : 120)
+    );
+    const availH = Math.max(
+      240,
+      window.innerHeight - (isMobile ? 170 : 192)
+    );
     const nextZoom = Math.min(availW / totalW, availH / totalH, 0.85);
-    setZoom(Math.max(0.14, +nextZoom.toFixed(2)));
+    setZoom(Math.max(0.12, +nextZoom.toFixed(2)));
   }, [
     isLeftSidebarOpen,
     leftSidebarWidth,
@@ -549,8 +571,28 @@ export const CarouselStudio: React.FC = () => {
     setSelectedLayerId(fresh.layers[0]?.id || null);
   };
 
+  const handleToggleLeftSidebar = useCallback(() => {
+    setIsLeftSidebarOpen((prev) => {
+      const next = !prev;
+      if (next && window.innerWidth < 768) {
+        setIsRightSidebarOpen(false);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleToggleRightSidebar = useCallback(() => {
+    setIsRightSidebarOpen((prev) => {
+      const next = !prev;
+      if (next && window.innerWidth < 768) {
+        setIsLeftSidebarOpen(false);
+      }
+      return next;
+    });
+  }, []);
+
   return (
-    <div className="h-screen w-screen flex flex-col bg-studio-bg text-zinc-100 overflow-hidden">
+    <div className="h-[100dvh] w-screen flex flex-col bg-studio-bg text-zinc-100 overflow-hidden">
       {/* Top Toolbar */}
       <TopToolbar
         project={project}
@@ -567,22 +609,36 @@ export const CarouselStudio: React.FC = () => {
         onOpenGifModal={() => setIsGifModalOpen(true)}
         onResetDemo={handleResetDemo}
         isLeftSidebarOpen={isLeftSidebarOpen}
-        onToggleLeftSidebar={() => setIsLeftSidebarOpen((o) => !o)}
+        onToggleLeftSidebar={handleToggleLeftSidebar}
         isRightSidebarOpen={isRightSidebarOpen}
-        onToggleRightSidebar={() => setIsRightSidebarOpen((o) => !o)}
+        onToggleRightSidebar={handleToggleRightSidebar}
       />
 
       {/* Main 3-Column Studio Workspace */}
       <div className="flex-1 flex overflow-hidden relative">
+        {/* Mobile Backdrop when a drawer is open */}
+        {(isLeftSidebarOpen || isRightSidebarOpen) && (
+          <div
+            onClick={() => {
+              setIsLeftSidebarOpen(false);
+              setIsRightSidebarOpen(false);
+            }}
+            className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-[1px] z-30"
+          />
+        )}
+
         <LeftSidebar
           project={project}
           onUpdateProject={handleUpdateProject}
-          onSelectLayer={setSelectedLayerId}
+          onSelectLayer={(id) => {
+            setSelectedLayerId(id);
+            if (window.innerWidth < 768) setIsLeftSidebarOpen(false);
+          }}
           onAddFiles={handleAddFiles}
           lastClickedPoint={lastClickedPoint}
           width={leftSidebarWidth}
           isOpen={isLeftSidebarOpen}
-          onToggleOpen={() => setIsLeftSidebarOpen((o) => !o)}
+          onToggleOpen={handleToggleLeftSidebar}
           onResizeWidth={setLeftSidebarWidth}
         />
 
@@ -613,12 +669,50 @@ export const CarouselStudio: React.FC = () => {
           onOpenCropModal={(layer) => setCropTargetLayer(layer)}
           width={rightSidebarWidth}
           isOpen={isRightSidebarOpen}
-          onToggleOpen={() => setIsRightSidebarOpen((o) => !o)}
+          onToggleOpen={handleToggleRightSidebar}
           onResizeWidth={setRightSidebarWidth}
           layersPanelHeight={layersPanelHeight}
           onResizeLayersPanelHeight={setLayersPanelHeight}
         />
       </div>
+
+      {/* Mobile Bottom Navigation Bar */}
+      <nav className="md:hidden h-12 bg-studio-panel border-t border-studio-border px-3 flex items-center justify-around shrink-0 z-20">
+        <button
+          type="button"
+          onClick={handleToggleLeftSidebar}
+          className={`btn-press flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium ${
+            isLeftSidebarOpen
+              ? 'bg-accent/15 text-accent border border-accent/30'
+              : 'text-zinc-300 hover:text-white'
+          }`}
+        >
+          <ImageIcon className="w-4 h-4" />
+          <span>Biblioteca ({project.assets.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={handleFitToScreen}
+          className="btn-press flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-zinc-300 hover:text-white"
+        >
+          <Maximize2 className="w-3.5 h-3.5" />
+          <span>Ajustar ({Math.round(zoom * 100)}%)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={handleToggleRightSidebar}
+          className={`btn-press flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium ${
+            isRightSidebarOpen
+              ? 'bg-accent/15 text-accent border border-accent/30'
+              : 'text-zinc-300 hover:text-white'
+          }`}
+        >
+          <SlidersHorizontal className="w-4 h-4" />
+          <span>Camadas ({project.layers.length})</span>
+        </button>
+      </nav>
 
       {/* Native <dialog> Modals */}
       <ExportModal

@@ -256,7 +256,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
 
   if (!isOpen) {
     return (
-      <div className="w-8 bg-studio-panel border-r border-studio-border flex flex-col items-center py-2.5 gap-3 shrink-0 select-none z-10">
+      <div className="hidden md:flex w-8 bg-studio-panel border-r border-studio-border flex-col items-center py-2.5 gap-3 shrink-0 select-none z-10">
         <button
           type="button"
           onClick={onToggleOpen}
@@ -278,7 +278,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
   return (
     <aside
       style={{ width: `${width}px` }}
-      className="relative bg-studio-panel border-r border-studio-border flex flex-col shrink-0 select-none z-10"
+      className="fixed md:relative inset-y-0 left-0 max-w-[86vw] md:max-w-none bg-studio-panel border-r border-studio-border flex flex-col shrink-0 select-none z-40 md:z-10 shadow-2xl md:shadow-none"
     >
       {/* Right Edge Horizontal Resizer */}
       <div

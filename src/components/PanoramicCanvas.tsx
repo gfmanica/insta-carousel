@@ -824,10 +824,14 @@ export const PanoramicCanvas: React.FC<PanoramicCanvasProps> = ({
                     onClick={(e) => e.stopPropagation()}
                     style={{
                       transform: `scale(${invScale})`,
-                      transformOrigin: 'bottom left',
-                      top: `${-38 * invScale}px`,
+                      transformOrigin: layer.y < 60 ? 'top left' : 'bottom left',
+                      top:
+                        layer.y < 60
+                          ? `${8 * invScale}px`
+                          : `${-38 * invScale}px`,
+                      left: layer.y < 60 ? `${8 * invScale}px` : '0px',
                     }}
-                    className="absolute left-0 bg-studio-panel/95 backdrop-blur-md text-zinc-100 px-2 py-1 rounded-lg border border-studio-border shadow-xl flex items-center gap-1 pointer-events-auto whitespace-nowrap"
+                    className="absolute bg-studio-panel/95 backdrop-blur-md text-zinc-100 px-2 py-1 rounded-lg border border-studio-border shadow-xl flex items-center gap-1 pointer-events-auto whitespace-nowrap touch-none"
                   >
                     {layer.locked && (
                       <Lock className="w-3 h-3 text-amber-400 mr-0.5" />

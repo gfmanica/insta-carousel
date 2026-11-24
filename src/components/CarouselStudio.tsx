@@ -4,6 +4,7 @@ import type {
   CarouselProject,
   CanvasLayer,
   ImageLayer,
+  TextLayer,
   ImageCrop,
   ImageAsset,
 } from '../types/carousel';
@@ -21,6 +22,7 @@ import { RightInspector } from './RightInspector';
 import { ExportModal } from './ExportModal';
 import { GifMakerModal } from './GifMakerModal';
 import { CropModal } from './CropModal';
+import { ShortcutsModal } from './ShortcutsModal';
 
 export const CarouselStudio: React.FC = () => {
   const [project, setProject] = useState<CarouselProject>(() =>
@@ -37,6 +39,7 @@ export const CarouselStudio: React.FC = () => {
   );
   const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
   const [isGifModalOpen, setIsGifModalOpen] = useState<boolean>(false);
+  const [isShortcutsModalOpen, setIsShortcutsModalOpen] = useState<boolean>(false);
   const [cropTargetLayer, setCropTargetLayer] = useState<ImageLayer | null>(
     null
   );
@@ -363,7 +366,7 @@ export const CarouselStudio: React.FC = () => {
     rightSidebarWidth,
   ]);
 
-  // Global keyboard shortcuts (Undo, Redo, Delete, Duplicate, Arrow nudge, Paste)
+  // Global keyboard shortcuts (Undo, Redo, Zoom, Panels, Modals, Layer transforms, Z-order, Paste)
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       const activeTag = document.activeElement?.tagName.toLowerCase();
@@ -371,10 +374,28 @@ export const CarouselStudio: React.FC = () => {
         activeTag === 'input' ||
         activeTag === 'textarea' ||
         activeTag === 'select';
+      const hasOpenModal =
+        isExportModalOpen ||
+        isGifModalOpen ||
+        isShortcutsModalOpen ||
+        cropTargetLayer !== null;
+
+      if (isEditingInput) return;
+
+      const key = e.key.toLowerCase();
+      const mod = e.metaKey || e.ctrlKey;
+
+      // Shortcuts Help (?)
+      if ((e.key === '?' || (e.shiftKey && key === '/')) && !mod) {
+        e.preventDefault();
+        setIsShortcutsModalOpen((open) => !open);
+        return;
+      }
+
+      if (hasOpenModal) return;
 
       // Undo / Redo
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
-        if (isEditingInput) return;
+      if (mod && key === 'z') {
         e.preventDefault();
         if (e.shiftKey) {
           handleRedo();
@@ -384,16 +405,29 @@ export const CarouselStudio: React.FC = () => {
         return;
       }
 
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') {
-        if (isEditingInput) return;
+      if (mod && key === 'y') {
         e.preventDefault();
         handleRedo();
         return;
       }
 
+      // Open Export Modal (Ctrl/Cmd + E)
+      if (mod && key === 'e') {
+        e.preventDefault();
+        setIsExportModalOpen(true);
+        return;
+      }
+
+      // Open GIF / Video Modal (Ctrl/Cmd + Shift + G)
+      if (mod && e.shiftKey && key === 'g') {
+        e.preventDefault();
+        setIsGifModalOpen(true);
+        return;
+      }
+
       // Copy Layer (Ctrl+C / Cmd+C)
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c') {
-        if (isEditingInput || !selectedLayerId) return;
+      if (mod && key === 'c') {
+        if (!selectedLayerId) return;
         const target = projectRef.current.layers.find(
           (l) => l.id === selectedLayerId
         );
@@ -404,8 +438,8 @@ export const CarouselStudio: React.FC = () => {
       }
 
       // Duplicate (Ctrl+D / Cmd+D)
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'd') {
-        if (isEditingInput || !selectedLayerId) return;
+      if (mod && key === 'd') {
+        if (!selectedLayerId) return;
         e.preventDefault();
         const target = projectRef.current.layers.find(
           (l) => l.id === selectedLayerId
@@ -414,7 +448,217 @@ export const CarouselStudio: React.FC = () => {
         return;
       }
 
-      if (isEditingInput || !selectedLayerId) return;
+      // Z-Order: Bring Forward (Ctrl/Cmd + ] or PageUp) / Send Backward (Ctrl/Cmd + [ or PageDown)
+      if (
+        (mod && e.key === ']') ||
+        e.key === 'PageUp' ||
+        (mod && e.key === '[') ||
+        e.key === 'PageDown'
+      ) {
+        if (!selectedLayerId) return;
+        e.preventDefault();
+        const isForward = e.key === ']' || e.key === 'PageUp';
+        handleUpdateProject((prev) => {
+          const ordered = [...prev.layers].sort((a, b) => b.zIndex - a.zIndex);
+          const idx = ordered.findIndex((l) => l.id === selectedLayerId);
+          if (idx === -1) return prev;
+          const swapIdx = isForward ? idx - 1 : idx + 1;
+          if (swapIdx < 0 || swapIdx >= ordered.length) return prev;
+          [ordered[idx], ordered[swapIdx]] = [ordered[swapIdx], ordered[idx]];
+          const total = ordered.length;
+          const zMap = new Map<string, number>();
+          ordered.forEach((l, i) => zMap.set(l.id, total - i));
+          return {
+            ...prev,
+            layers: prev.layers.map((l) => ({
+              ...l,
+              zIndex: zMap.get(l.id) ?? l.zIndex,
+            })),
+          };
+        });
+        return;
+      }
+
+      // Escape: deselect active layer
+      if (e.key === 'Escape') {
+        if (selectedLayerId) {
+          e.preventDefault();
+          setSelectedLayerId(null);
+        }
+        return;
+      }
+
+      // Tab / Shift+Tab: cycle through visible layers
+      if (e.key === 'Tab' && !mod) {
+        const visibleLayers = [...projectRef.current.layers]
+          .filter((l) => l.visible)
+          .sort((a, b) => b.zIndex - a.zIndex);
+        if (visibleLayers.length === 0) return;
+        e.preventDefault();
+        const currentIdx = visibleLayers.findIndex(
+          (l) => l.id === selectedLayerId
+        );
+        const nextIdx = e.shiftKey
+          ? currentIdx <= 0
+            ? visibleLayers.length - 1
+            : currentIdx - 1
+          : (currentIdx + 1) % visibleLayers.length;
+        setSelectedLayerId(visibleLayers[nextIdx].id);
+        return;
+      }
+
+      if (mod || e.altKey) return;
+
+      // Zoom controls (+ / =, -, 0, 1)
+      if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        setZoom((z) => Math.min(1.5, +(z + 0.1).toFixed(2)));
+        return;
+      }
+      if (e.key === '-') {
+        e.preventDefault();
+        setZoom((z) => Math.max(0.12, +(z - 0.1).toFixed(2)));
+        return;
+      }
+      if (e.key === '0') {
+        e.preventDefault();
+        handleFitToScreen();
+        return;
+      }
+      if (e.key === '1') {
+        e.preventDefault();
+        setZoom(1);
+        return;
+      }
+
+      // Toggle Seam Guides (G)
+      if (key === 'g' && !e.shiftKey) {
+        e.preventDefault();
+        handleUpdateProject((p) => ({
+          ...p,
+          showSeamGuides: !p.showSeamGuides,
+        }));
+        return;
+      }
+
+      // Toggle Side Panels ([ left, ] right, \ focus mode)
+      if (e.key === '[') {
+        e.preventDefault();
+        setIsLeftSidebarOpen((o) => !o);
+        return;
+      }
+      if (e.key === ']') {
+        e.preventDefault();
+        setIsRightSidebarOpen((o) => !o);
+        return;
+      }
+      if (e.key === '\\') {
+        e.preventDefault();
+        const anyOpen = isLeftSidebarOpen || isRightSidebarOpen;
+        setIsLeftSidebarOpen(!anyOpen);
+        setIsRightSidebarOpen(!anyOpen);
+        return;
+      }
+
+      // Quick Add Text Layer (T)
+      if (key === 't' && !e.shiftKey) {
+        e.preventDefault();
+        const fmt = INSTAGRAM_FORMATS[projectRef.current.formatId];
+        const pt = lastClickedPointRef.current;
+        const w = 720;
+        const h = 180;
+        const layerId = `layer-text-${Date.now()}`;
+        handleUpdateProject((prev) => {
+          const maxZ = prev.layers.reduce((m, l) => Math.max(m, l.zIndex), 0);
+          const newText: TextLayer = {
+            id: layerId,
+            type: 'text',
+            name: 'Título',
+            text: 'Título Principal',
+            x: pt ? Math.round(pt.x - w / 2) : Math.round((fmt.width - w) / 2),
+            y: pt ? Math.round(pt.y - h / 2) : Math.round((fmt.height - h) / 2),
+            width: w,
+            height: h,
+            rotation: 0,
+            opacity: 1,
+            zIndex: maxZ + 1,
+            visible: true,
+            locked: false,
+            fontSize: 56,
+            fontFamily: 'Inter, system-ui, sans-serif',
+            fontWeight: '700',
+            color: '#FAFAFA',
+            backgroundColor: 'transparent',
+            borderRadius: 12,
+            textAlign: 'center',
+            shadowBlur: 0,
+            shadowColor: 'rgba(0,0,0,0.4)',
+          };
+          return {
+            ...prev,
+            layers: [...prev.layers, newText],
+          };
+        });
+        setSelectedLayerId(layerId);
+        return;
+      }
+
+      if (!selectedLayerId) return;
+
+      // Layer transforms & actions (R rotate, H flipX, Shift+H visibility, V flipY, C crop, L lock)
+      if (key === 'r') {
+        e.preventDefault();
+        const delta = e.shiftKey ? -90 : 90;
+        handleUpdateLayer(selectedLayerId, (l) =>
+          l.locked ? l : { ...l, rotation: ((l.rotation || 0) + delta) % 360 }
+        );
+        return;
+      }
+
+      if (key === 'h' && e.shiftKey) {
+        e.preventDefault();
+        handleUpdateLayer(selectedLayerId, (l) => ({
+          ...l,
+          visible: !l.visible,
+        }));
+        return;
+      }
+
+      if (key === 'h') {
+        e.preventDefault();
+        handleUpdateLayer(selectedLayerId, (l) =>
+          l.locked ? l : { ...l, flipX: !l.flipX }
+        );
+        return;
+      }
+
+      if (key === 'v') {
+        e.preventDefault();
+        handleUpdateLayer(selectedLayerId, (l) =>
+          l.locked ? l : { ...l, flipY: !l.flipY }
+        );
+        return;
+      }
+
+      if (key === 'l') {
+        e.preventDefault();
+        handleUpdateLayer(selectedLayerId, (l) => ({
+          ...l,
+          locked: !l.locked,
+        }));
+        return;
+      }
+
+      if (key === 'c') {
+        const target = projectRef.current.layers.find(
+          (l) => l.id === selectedLayerId
+        );
+        if (target && target.type === 'image') {
+          e.preventDefault();
+          setCropTargetLayer(target);
+        }
+        return;
+      }
 
       // Delete / Backspace
       if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -555,8 +799,16 @@ export const CarouselStudio: React.FC = () => {
     };
   }, [
     selectedLayerId,
+    isExportModalOpen,
+    isGifModalOpen,
+    isShortcutsModalOpen,
+    cropTargetLayer,
+    isLeftSidebarOpen,
+    isRightSidebarOpen,
     handleUndo,
     handleRedo,
+    handleFitToScreen,
+    handleUpdateProject,
     handleDuplicateLayer,
     handleDeleteLayer,
     handleUpdateLayer,
@@ -607,6 +859,7 @@ export const CarouselStudio: React.FC = () => {
         onUpdateProject={handleUpdateProject}
         onOpenExportModal={() => setIsExportModalOpen(true)}
         onOpenGifModal={() => setIsGifModalOpen(true)}
+        onOpenShortcutsModal={() => setIsShortcutsModalOpen(true)}
         onResetDemo={handleResetDemo}
         isLeftSidebarOpen={isLeftSidebarOpen}
         onToggleLeftSidebar={handleToggleLeftSidebar}
@@ -733,6 +986,11 @@ export const CarouselStudio: React.FC = () => {
         layer={cropTargetLayer}
         onClose={() => setCropTargetLayer(null)}
         onApplyCrop={handleApplyCrop}
+      />
+
+      <ShortcutsModal
+        isOpen={isShortcutsModalOpen}
+        onClose={() => setIsShortcutsModalOpen(false)}
       />
     </div>
   );

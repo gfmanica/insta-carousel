@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   X,
   Film,
+  Video,
+  Upload,
   Play,
   Pause,
   ArrowUp,
@@ -14,6 +16,8 @@ import {
   FolderPlus,
   Check,
   LayoutGrid,
+  Scissors,
+  Layers,
 } from 'lucide-react';
 import type {
   CarouselProject,
@@ -23,7 +27,12 @@ import type {
 } from '../types/carousel';
 import { INSTAGRAM_FORMATS } from '../types/carousel';
 import { renderSlideToCanvas, formatBytes, triggerBlobDownload } from '../utils/canvasExport';
-import { generateAnimatedGif } from '../utils/gifGenerator';
+import {
+  generateAnimatedGif,
+  generateGifFromVideo,
+  extractFramesFromVideo,
+  type VideoFitMode,
+} from '../utils/gifGenerator';
 
 interface GifMakerModalProps {
   isOpen: boolean;
@@ -41,17 +50,59 @@ export const GifMakerModal: React.FC<GifMakerModalProps> = ({
   onSelectLayer,
 }) => {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const videoPreviewRef = useRef<HTMLVideoElement>(null);
+
+  const [activeTab, setActiveTab] = useState<'frames' | 'video'>('frames');
   const [slideThumbnails, setSlideThumbnails] = useState<Record<number, string>>({});
   const [currentPreviewIdx, setCurrentPreviewIdx] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [isExtractingFrames, setIsExtractingFrames] = useState<boolean>(false);
   const [progressText, setProgressText] = useState<string>('');
   const [generatedGifUrl, setGeneratedGifUrl] = useState<string | null>(null);
   const [generatedGifBlob, setGeneratedGifBlob] = useState<Blob | null>(null);
+  const [generatedGifDims, setGeneratedGifDims] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
   const [savedToLibrary, setSavedToLibrary] = useState<boolean>(false);
+
+  // Video-to-GIF state
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [videoDuration, setVideoDuration] = useState<number>(0);
+  const [videoStart, setVideoStart] = useState<number>(0);
+  const [videoEnd, setVideoEnd] = useState<number>(5);
+  const [videoFps, setVideoFps] = useState<number>(10);
+  const [videoFitMode, setVideoFitMode] = useState<VideoFitMode>('original');
+  const [videoError, setVideoError] = useState<string | null>(null);
 
   const frames = project.gifFrames;
   const currentFormat = INSTAGRAM_FORMATS[project.formatId];
+
+  useEffect(() => {
+    return () => {
+      if (videoUrl) URL.revokeObjectURL(videoUrl);
+    };
+  }, [videoUrl]);
+
+  const handleLoadVideoFile = (file: File | null | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('video/')) {
+      setVideoError('Selecione um arquivo de vídeo válido (MP4, WebM, MOV).');
+      return;
+    }
+    setVideoError(null);
+    resetGeneratedState();
+    if (videoUrl) URL.revokeObjectURL(videoUrl);
+    const nextUrl = URL.createObjectURL(file);
+    setVideoFile(file);
+    setVideoUrl(nextUrl);
+    setVideoStart(0);
+    setVideoEnd(5);
+    setVideoDuration(0);
+  };
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -159,6 +210,7 @@ export const GifMakerModal: React.FC<GifMakerModalProps> = ({
   const resetGeneratedState = () => {
     setGeneratedGifUrl(null);
     setGeneratedGifBlob(null);
+    setGeneratedGifDims(null);
     setSavedToLibrary(false);
   };
 
@@ -252,10 +304,11 @@ export const GifMakerModal: React.FC<GifMakerModalProps> = ({
     setProgressText('Codificando GIF...');
 
     try {
+      const targetWidth = project.gifWidth || 720;
       const blob = await generateAnimatedGif({
         project,
         frames,
-        targetWidth: project.gifWidth || 720,
+        targetWidth,
         loop: project.gifLoop,
         onProgress: (curr, total) => {
           setProgressText(`Frame ${curr}/${total}...`);
@@ -266,6 +319,10 @@ export const GifMakerModal: React.FC<GifMakerModalProps> = ({
       const url = URL.createObjectURL(blob);
       setGeneratedGifBlob(blob);
       setGeneratedGifUrl(url);
+      setGeneratedGifDims({
+        width: targetWidth,
+        height: Math.round(targetWidth * (currentFormat.height / currentFormat.width)),
+      });
     } catch (err) {
       console.error('Erro ao gerar GIF:', err);
     } finally {
@@ -274,11 +331,84 @@ export const GifMakerModal: React.FC<GifMakerModalProps> = ({
     }
   };
 
+  const handleGenerateGifFromVideo = async () => {
+    if (!videoFile) return;
+    setIsGenerating(true);
+    setSavedToLibrary(false);
+    setVideoError(null);
+    setProgressText('Preparando vídeo...');
+
+    try {
+      const targetWidth = project.gifWidth || 480;
+      const result = await generateGifFromVideo({
+        file: videoFile,
+        startTime: videoStart,
+        endTime: Math.max(videoStart + 0.2, videoEnd),
+        fps: videoFps,
+        targetWidth,
+        targetAspect: currentFormat.height / currentFormat.width,
+        fitMode: videoFitMode,
+        backgroundColor: project.backgroundColor || '#111113',
+        loop: project.gifLoop,
+        onProgress: (_curr, _total, stage) => {
+          setProgressText(stage);
+        },
+      });
+
+      if (generatedGifUrl) URL.revokeObjectURL(generatedGifUrl);
+      const url = URL.createObjectURL(result.blob);
+      setGeneratedGifBlob(result.blob);
+      setGeneratedGifUrl(url);
+      setGeneratedGifDims({ width: result.width, height: result.height });
+    } catch (err) {
+      console.error('Erro ao converter vídeo em GIF:', err);
+      setVideoError(
+        err instanceof Error
+          ? err.message
+          : 'Erro ao converter vídeo em GIF.'
+      );
+    } finally {
+      setIsGenerating(false);
+      setProgressText('');
+    }
+  };
+
+  const handleExtractVideoFrames = async () => {
+    if (!videoFile) return;
+    setIsExtractingFrames(true);
+    setVideoError(null);
+    setProgressText('Extraindo frames...');
+
+    try {
+      const extracted = await extractFramesFromVideo(
+        videoFile,
+        videoStart,
+        Math.max(videoStart + 0.2, videoEnd),
+        12,
+        (curr, total) => setProgressText(`Extraindo ${curr}/${total}...`)
+      );
+      resetGeneratedState();
+      onUpdateProject((p) => ({
+        ...p,
+        gifFrames: [...p.gifFrames, ...extracted],
+      }));
+      setActiveTab('frames');
+    } catch (err) {
+      console.error('Erro ao extrair frames:', err);
+      setVideoError('Não foi possível extrair os frames deste vídeo.');
+    } finally {
+      setIsExtractingFrames(false);
+      setProgressText('');
+    }
+  };
+
   const handleDownloadGif = () => {
     if (!generatedGifBlob) return;
-    const safeTitle = (project.title || 'carrossel')
-      .toLowerCase()
-      .replace(/[^a-z0-9-_]+/g, '-');
+    const baseName =
+      activeTab === 'video' && videoFile
+        ? videoFile.name.replace(/\.[^/.]+$/, '')
+        : project.title || 'carrossel';
+    const safeTitle = baseName.toLowerCase().replace(/[^a-z0-9-_]+/g, '-');
     triggerBlobDownload(generatedGifBlob, `${safeTitle}.gif`);
   };
 
@@ -291,13 +421,20 @@ export const GifMakerModal: React.FC<GifMakerModalProps> = ({
       const dataUrl = ev.target?.result as string;
       if (!dataUrl) return;
 
-      const gifW = Math.round(project.gifWidth || 720);
-      const gifH = Math.round(gifW * (currentFormat.height / currentFormat.width));
+      const gifW = generatedGifDims?.width || Math.round(project.gifWidth || 720);
+      const gifH =
+        generatedGifDims?.height ||
+        Math.round(gifW * (currentFormat.height / currentFormat.width));
       const assetId = `asset-gif-${Date.now()}`;
-      const safeTitle = (project.title || 'animacao')
-        .toLowerCase()
-        .replace(/[^a-z0-9-_]+/g, '-');
-      const assetName = `${safeTitle}-${frames.length}f.gif`;
+      const baseName =
+        activeTab === 'video' && videoFile
+          ? videoFile.name.replace(/\.[^/.]+$/, '')
+          : project.title || 'animacao';
+      const safeTitle = baseName.toLowerCase().replace(/[^a-z0-9-_]+/g, '-');
+      const assetName =
+        activeTab === 'video'
+          ? `${safeTitle}-video.gif`
+          : `${safeTitle}-${frames.length}f.gif`;
 
       const newAsset: ImageAsset = {
         id: assetId,
@@ -387,30 +524,319 @@ export const GifMakerModal: React.FC<GifMakerModalProps> = ({
     >
       <div className="flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="px-5 py-3.5 border-b border-studio-border flex items-center justify-between bg-studio-panel">
-          <div>
+        <div className="px-4 sm:px-5 py-3 border-b border-studio-border flex flex-wrap items-center justify-between gap-2 bg-studio-panel">
+          <div className="min-w-0">
             <h2 id="gif-dialog-title" className="text-sm font-semibold text-white">
               Criar GIF Animado
             </h2>
-            <p className="text-xs text-zinc-400">
-              Selecione quadros ou imagens da biblioteca, ordene a sequência e defina o intervalo em milissegundos
+            <p className="text-[11px] sm:text-xs text-zinc-400">
+              Monte uma sequência de quadros/imagens ou converta um vídeo em GIF
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={() => dialogRef.current?.close()}
-            aria-label="Fechar"
-            className="btn-press p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-studio-hover"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2 ml-auto">
+            <div className="flex items-center bg-studio-bg p-0.5 rounded-lg border border-studio-border">
+              <button
+                type="button"
+                onClick={() => setActiveTab('frames')}
+                className={`btn-press px-2.5 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                  activeTab === 'frames'
+                    ? 'bg-studio-card text-white border border-studio-border'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Quadros e Imagens</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('video')}
+                className={`btn-press px-2.5 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors ${
+                  activeTab === 'video'
+                    ? 'bg-studio-card text-white border border-studio-border'
+                    : 'text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                <Video className="w-3.5 h-3.5" />
+                <span>Vídeo para GIF</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => dialogRef.current?.close()}
+              aria-label="Fechar"
+              className="btn-press p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-studio-hover"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Body */}
-        <div className="p-5 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 gap-5 bg-studio-bg">
-          {/* Left Column (7 cols): Sources + Sequence */}
+        <div className="p-3 sm:p-5 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 bg-studio-bg">
+          {/* Left Column (7 cols): Sources + Sequence OR Video Converter */}
           <div className="lg:col-span-7 space-y-4">
+            {activeTab === 'video' ? (
+              <div className="bg-studio-panel p-4 rounded-lg border border-studio-border space-y-4">
+                <input
+                  ref={videoInputRef}
+                  type="file"
+                  accept="video/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    handleLoadVideoFile(e.target.files?.[0]);
+                    e.target.value = '';
+                  }}
+                />
+
+                {!videoUrl ? (
+                  <button
+                    type="button"
+                    onClick={() => videoInputRef.current?.click()}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      handleLoadVideoFile(e.dataTransfer.files?.[0]);
+                    }}
+                    className="btn-press w-full py-10 px-4 rounded-lg border border-dashed border-zinc-700 hover:border-accent bg-studio-card/50 hover:bg-studio-card flex flex-col items-center justify-center gap-2 text-center transition-colors"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-accent/15 text-accent flex items-center justify-center">
+                      <Upload className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-zinc-100">
+                        Carregar vídeo do dispositivo
+                      </p>
+                      <p className="text-[11px] text-zinc-400 mt-0.5">
+                        MP4, WebM ou MOV — 100% processado no navegador
+                      </p>
+                    </div>
+                  </button>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-zinc-200 truncate">
+                          {videoFile?.name}
+                        </p>
+                        <p className="text-[11px] font-mono text-zinc-500">
+                          Duração: {videoDuration.toFixed(1)}s • Trecho:{' '}
+                          {Math.max(0.1, videoEnd - videoStart).toFixed(1)}s (
+                          {Math.min(
+                            180,
+                            Math.max(
+                              2,
+                              Math.round(
+                                Math.max(0.1, videoEnd - videoStart) * videoFps
+                              )
+                            )
+                          )}{' '}
+                          frames)
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => videoInputRef.current?.click()}
+                        className="btn-press px-2.5 py-1 rounded-md bg-studio-card hover:bg-studio-hover border border-studio-border text-[11px] font-medium text-zinc-200 shrink-0"
+                      >
+                        Trocar vídeo
+                      </button>
+                    </div>
+
+                    <div className="rounded-lg overflow-hidden bg-black border border-studio-border">
+                      <video
+                        ref={videoPreviewRef}
+                        src={videoUrl}
+                        controls
+                        playsInline
+                        muted
+                        onLoadedMetadata={(e) => {
+                          const dur = e.currentTarget.duration || 0;
+                          setVideoDuration(dur);
+                          setVideoStart(0);
+                          setVideoEnd(Math.min(dur, 6));
+                        }}
+                        className="w-full max-h-[240px] object-contain mx-auto"
+                      />
+                    </div>
+
+                    {/* Trim Controls */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-studio-card p-3 rounded-lg border border-studio-border">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-zinc-400 flex items-center gap-1">
+                            <Scissors className="w-3 h-3 text-accent" />
+                            Início
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-zinc-200">
+                              {videoStart.toFixed(1)}s
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const t = videoPreviewRef.current?.currentTime ?? 0;
+                                const nextStart = Math.min(t, Math.max(0, videoEnd - 0.2));
+                                setVideoStart(+nextStart.toFixed(1));
+                                resetGeneratedState();
+                              }}
+                              className="px-1.5 py-0.5 rounded bg-studio-panel hover:bg-studio-hover text-[10px] text-accent border border-studio-border"
+                            >
+                              Usar atual
+                            </button>
+                          </div>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={Math.max(0.2, +(videoDuration - 0.2).toFixed(1))}
+                          step={0.1}
+                          value={videoStart}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            setVideoStart(val);
+                            if (val >= videoEnd - 0.2) {
+                              setVideoEnd(Math.min(videoDuration, +(val + 0.5).toFixed(1)));
+                            }
+                            if (videoPreviewRef.current) {
+                              videoPreviewRef.current.currentTime = val;
+                            }
+                            resetGeneratedState();
+                          }}
+                          className="w-full cursor-pointer"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-zinc-400 flex items-center gap-1">
+                            <Scissors className="w-3 h-3 text-accent" />
+                            Fim
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-mono text-zinc-200">
+                              {videoEnd.toFixed(1)}s
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const t = videoPreviewRef.current?.currentTime ?? videoDuration;
+                                const nextEnd = Math.max(videoStart + 0.2, t);
+                                setVideoEnd(+Math.min(videoDuration, nextEnd).toFixed(1));
+                                resetGeneratedState();
+                              }}
+                              className="px-1.5 py-0.5 rounded bg-studio-panel hover:bg-studio-hover text-[10px] text-accent border border-studio-border"
+                            >
+                              Usar atual
+                            </button>
+                          </div>
+                        </div>
+                        <input
+                          type="range"
+                          min={Math.min(videoDuration, +(videoStart + 0.2).toFixed(1))}
+                          max={Math.max(0.5, +videoDuration.toFixed(1))}
+                          step={0.1}
+                          value={videoEnd}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            setVideoEnd(Math.max(videoStart + 0.2, val));
+                            if (videoPreviewRef.current) {
+                              videoPreviewRef.current.currentTime = val;
+                            }
+                            resetGeneratedState();
+                          }}
+                          className="w-full cursor-pointer"
+                        />
+                      </div>
+                    </div>
+
+                    {/* FPS & Fit Mode Controls */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="bg-studio-card p-2.5 rounded-lg border border-studio-border space-y-1.5">
+                        <span className="text-[11px] text-zinc-400 block">
+                          Taxa de quadros (FPS)
+                        </span>
+                        <div className="grid grid-cols-5 gap-1">
+                          {[6, 8, 10, 12, 15].map((fpsVal) => (
+                            <button
+                              key={fpsVal}
+                              type="button"
+                              onClick={() => {
+                                setVideoFps(fpsVal);
+                                resetGeneratedState();
+                              }}
+                              className={`btn-press py-1 rounded text-[11px] font-mono border ${
+                                videoFps === fpsVal
+                                  ? 'bg-accent/15 border-accent text-white'
+                                  : 'bg-studio-panel border-studio-border text-zinc-400 hover:text-zinc-200'
+                              }`}
+                            >
+                              {fpsVal}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="bg-studio-card p-2.5 rounded-lg border border-studio-border space-y-1.5">
+                        <span className="text-[11px] text-zinc-400 block">
+                          Enquadramento
+                        </span>
+                        <div className="grid grid-cols-3 gap-1">
+                          {(
+                            [
+                              { id: 'original', label: 'Original' },
+                              { id: 'cover', label: 'Preencher' },
+                              { id: 'contain', label: 'Conter' },
+                            ] as const
+                          ).map((mode) => (
+                            <button
+                              key={mode.id}
+                              type="button"
+                              onClick={() => {
+                                setVideoFitMode(mode.id);
+                                resetGeneratedState();
+                              }}
+                              className={`btn-press py-1 px-1.5 rounded text-[11px] border truncate ${
+                                videoFitMode === mode.id
+                                  ? 'bg-accent/15 border-accent text-white'
+                                  : 'bg-studio-panel border-studio-border text-zinc-400 hover:text-zinc-200'
+                              }`}
+                            >
+                              {mode.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Optional: Extract frames to sequence */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-studio-border">
+                      <span className="text-[11px] text-zinc-500">
+                        Quer editar ou misturar frames do vídeo com quadros?
+                      </span>
+                      <button
+                        type="button"
+                        disabled={isExtractingFrames || isGenerating}
+                        onClick={handleExtractVideoFrames}
+                        className="btn-press px-2.5 py-1.5 rounded-md bg-studio-card hover:bg-studio-hover border border-studio-border text-[11px] font-medium text-zinc-200 disabled:opacity-40"
+                      >
+                        {isExtractingFrames
+                          ? progressText || 'Extraindo...'
+                          : 'Extrair 12 frames para sequência'}
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {videoError && (
+                  <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-md px-3 py-2">
+                    {videoError}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <>
             {/* Source Picker */}
             <div className="bg-studio-panel p-4 rounded-lg border border-studio-border space-y-3">
               <h3 className="text-xs font-medium text-zinc-300">
@@ -611,6 +1037,8 @@ export const GifMakerModal: React.FC<GifMakerModalProps> = ({
                 </div>
               )}
             </div>
+              </>
+            )}
           </div>
 
           {/* Right Column (5 cols): Live Preview & Export */}
@@ -618,25 +1046,27 @@ export const GifMakerModal: React.FC<GifMakerModalProps> = ({
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="text-xs font-medium text-zinc-300">
-                  Pré-visualização
+                  {activeTab === 'video' ? 'Resultado do GIF' : 'Pré-visualização'}
                 </h3>
-                <button
-                  type="button"
-                  onClick={() => setIsPlaying((p) => !p)}
-                  className="btn-press px-2 py-1 rounded bg-studio-card hover:bg-studio-hover text-xs font-medium text-zinc-200 border border-studio-border flex items-center gap-1.5"
-                >
-                  {isPlaying ? (
-                    <>
-                      <Pause className="w-3 h-3 text-zinc-400" />
-                      <span>Pausar</span>
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-3 h-3 text-zinc-200" />
-                      <span>Reproduzir</span>
-                    </>
-                  )}
-                </button>
+                {activeTab === 'frames' && (
+                  <button
+                    type="button"
+                    onClick={() => setIsPlaying((p) => !p)}
+                    className="btn-press px-2 py-1 rounded bg-studio-card hover:bg-studio-hover text-xs font-medium text-zinc-200 border border-studio-border flex items-center gap-1.5"
+                  >
+                    {isPlaying ? (
+                      <>
+                        <Pause className="w-3 h-3 text-zinc-400" />
+                        <span>Pausar</span>
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-3 h-3 text-zinc-200" />
+                        <span>Reproduzir</span>
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
 
               {/* Animated Preview Stage */}
@@ -647,6 +1077,15 @@ export const GifMakerModal: React.FC<GifMakerModalProps> = ({
                     alt="GIF Gerado"
                     className="max-w-full max-h-full object-contain"
                   />
+                ) : activeTab === 'video' ? (
+                  <div className="p-6 text-center space-y-1.5">
+                    <Video className="w-7 h-7 text-zinc-600 mx-auto" />
+                    <p className="text-xs text-zinc-400">
+                      {videoFile
+                        ? 'Clique em "Converter vídeo em .GIF" abaixo'
+                        : 'Carregue um vídeo à esquerda para gerar o GIF'}
+                    </p>
+                  </div>
                 ) : activePreviewFrame ? (
                   <img
                     src={getFramePreviewSrc(activePreviewFrame)}
@@ -657,13 +1096,19 @@ export const GifMakerModal: React.FC<GifMakerModalProps> = ({
                   <p className="text-xs text-zinc-500">Sem frames</p>
                 )}
 
-                {activePreviewFrame && !generatedGifUrl && (
+                {activeTab === 'frames' && activePreviewFrame && !generatedGifUrl && (
                   <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between px-2.5 py-1 rounded bg-black/75 text-[11px] font-mono text-zinc-200">
-                    <span>
+                    <span className="truncate">
                       {(currentPreviewIdx % frames.length) + 1}/{frames.length} •{' '}
                       {activePreviewFrame.label}
                     </span>
-                    <span>{activePreviewFrame.delayMs}ms</span>
+                    <span className="shrink-0 ml-2">{activePreviewFrame.delayMs}ms</span>
+                  </div>
+                )}
+
+                {generatedGifDims && generatedGifUrl && (
+                  <div className="absolute bottom-2.5 right-2.5 px-2 py-0.5 rounded bg-black/75 text-[10px] font-mono text-zinc-200">
+                    {generatedGifDims.width}×{generatedGifDims.height}px
                   </div>
                 )}
               </div>
@@ -672,7 +1117,9 @@ export const GifMakerModal: React.FC<GifMakerModalProps> = ({
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <div className="bg-studio-card p-2 rounded-md border border-studio-border">
                   <label className="block text-[10px] text-zinc-400 mb-1">
-                    Resolução
+                    {activeTab === 'video' && videoFitMode === 'original'
+                      ? 'Largura máx.'
+                      : 'Resolução'}
                   </label>
                   <select
                     value={project.gifWidth || 720}
@@ -685,15 +1132,26 @@ export const GifMakerModal: React.FC<GifMakerModalProps> = ({
                     }}
                     className="w-full bg-studio-panel text-xs font-mono text-zinc-200 p-1 rounded border border-studio-border focus:outline-none"
                   >
+                    <option value={360}>
+                      {activeTab === 'video' && videoFitMode === 'original'
+                        ? '360px (leve)'
+                        : `360×${Math.round(360 * (currentFormat.height / currentFormat.width))}`}
+                    </option>
                     <option value={480}>
-                      480×
-                      {Math.round(480 * (currentFormat.height / currentFormat.width))}
+                      {activeTab === 'video' && videoFitMode === 'original'
+                        ? '480px (padrão)'
+                        : `480×${Math.round(480 * (currentFormat.height / currentFormat.width))}`}
                     </option>
                     <option value={720}>
-                      720×
-                      {Math.round(720 * (currentFormat.height / currentFormat.width))}
+                      {activeTab === 'video' && videoFitMode === 'original'
+                        ? '720px (alta)'
+                        : `720×${Math.round(720 * (currentFormat.height / currentFormat.width))}`}
                     </option>
-                    <option value={1080}>1080×{currentFormat.height}</option>
+                    <option value={1080}>
+                      {activeTab === 'video' && videoFitMode === 'original'
+                        ? '1080px (Full HD)'
+                        : `1080×${currentFormat.height}`}
+                    </option>
                   </select>
                 </div>
 
@@ -727,16 +1185,30 @@ export const GifMakerModal: React.FC<GifMakerModalProps> = ({
             <div className="space-y-2 pt-3 border-t border-studio-border">
               <button
                 type="button"
-                disabled={frames.length === 0 || isGenerating}
-                onClick={handleGenerateGif}
+                disabled={
+                  isGenerating ||
+                  isExtractingFrames ||
+                  (activeTab === 'video' ? !videoFile : frames.length === 0)
+                }
+                onClick={
+                  activeTab === 'video'
+                    ? handleGenerateGifFromVideo
+                    : handleGenerateGif
+                }
                 className="btn-press w-full py-2 px-4 rounded-lg bg-white hover:bg-zinc-200 text-zinc-950 font-semibold text-xs disabled:opacity-40 flex items-center justify-center gap-1.5"
               >
-                <Film className="w-3.5 h-3.5" />
+                {activeTab === 'video' ? (
+                  <Video className="w-3.5 h-3.5" />
+                ) : (
+                  <Film className="w-3.5 h-3.5" />
+                )}
                 <span>
                   {isGenerating
                     ? progressText || 'Renderizando...'
                     : generatedGifUrl
                     ? 'Regerar GIF'
+                    : activeTab === 'video'
+                    ? 'Converter vídeo em .GIF'
                     : 'Gerar arquivo .GIF'}
                 </span>
               </button>

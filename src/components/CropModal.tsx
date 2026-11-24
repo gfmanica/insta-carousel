@@ -267,16 +267,16 @@ export const CropModal: React.FC<CropModalProps> = ({
         </div>
 
         {/* Interactive Crop Stage */}
-        <div className="p-6 bg-studio-bg flex items-center justify-center overflow-hidden min-h-[360px]">
+        <div className="p-3 sm:p-6 bg-studio-bg flex items-center justify-center overflow-hidden min-h-[260px] sm:min-h-[360px]">
           <div
             ref={stageRef}
-            className="relative inline-block max-w-full max-h-[400px] select-none shadow-2xl"
+            className="relative inline-block max-w-full max-h-[340px] sm:max-h-[400px] select-none shadow-2xl touch-none"
           >
             <img
               src={layer.dataUrl}
               alt={layer.name}
               draggable={false}
-              className="max-h-[400px] w-auto block opacity-30 pointer-events-none select-none"
+              className="max-h-[340px] sm:max-h-[400px] w-auto block opacity-30 pointer-events-none select-none"
             />
 
             {/* Active Highlighted Crop Box */}

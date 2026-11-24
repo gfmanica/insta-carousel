@@ -98,6 +98,15 @@ dialog::backdrop {
   border-radius: 3px;
 }
 
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 ::-webkit-scrollbar-thumb:hover {
   background: #3F3F46;
 }

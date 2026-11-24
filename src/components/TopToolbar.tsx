@@ -13,6 +13,7 @@ import {
   Maximize2,
   PanelLeft,
   PanelRight,
+  Keyboard,
 } from 'lucide-react';
 import type { CarouselProject, InstagramFormatId } from '../types/carousel';
 import { INSTAGRAM_FORMATS } from '../types/carousel';
@@ -30,6 +31,7 @@ interface TopToolbarProps {
   onUpdateProject: (updater: (prev: CarouselProject) => CarouselProject) => void;
   onOpenExportModal: () => void;
   onOpenGifModal: () => void;
+  onOpenShortcutsModal: () => void;
   onResetDemo: () => void;
   isLeftSidebarOpen: boolean;
   onToggleLeftSidebar: () => void;
@@ -50,6 +52,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
   onUpdateProject,
   onOpenExportModal,
   onOpenGifModal,
+  onOpenShortcutsModal,
   onResetDemo,
   isLeftSidebarOpen,
   onToggleLeftSidebar,
@@ -280,8 +283,17 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
         </div>
       </div>
 
-      {/* Right: Reset, GIF Studio, Export */}
+      {/* Right: Shortcuts, Reset, GIF Studio, Export */}
       <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 order-2 md:order-3">
+        <button
+          type="button"
+          onClick={onOpenShortcutsModal}
+          title="Atalhos de teclado (?)"
+          className="hidden sm:flex btn-press h-8 w-8 rounded-lg bg-studio-card hover:bg-studio-hover text-zinc-400 hover:text-zinc-200 border border-studio-border items-center justify-center"
+        >
+          <Keyboard className="w-3.5 h-3.5" />
+        </button>
+
         <button
           type="button"
           onClick={onResetDemo}

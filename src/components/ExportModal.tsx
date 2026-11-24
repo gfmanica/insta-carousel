@@ -214,7 +214,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         </div>
 
         {/* Body */}
-        <div className="p-5 overflow-y-auto grid grid-cols-1 md:grid-cols-12 gap-5 bg-studio-bg">
+        <div className="p-3 sm:p-5 overflow-y-auto grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-5 bg-studio-bg">
           {/* Left Column: Quality & Format Controls */}
           <div className="md:col-span-5 space-y-4 bg-studio-panel p-4 rounded-lg border border-studio-border">
             {/* Image Format */}

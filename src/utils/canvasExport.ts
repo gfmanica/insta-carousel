@@ -125,29 +125,41 @@ export async function renderSlideToCanvas(
     .sort((a, b) => a.zIndex - b.zIndex);
 
   const slideOffsetX = slideIndex * slideW;
-
-  for (const layer of sortedLayers) {
-    // Check if layer bounding box even roughly intersects this slide (with generous margin for rotation)
+  const intersectingLayers = sortedLayers.filter((layer) => {
     const maxDim = Math.hypot(layer.width, layer.height);
     const centerX = layer.x + layer.width / 2;
-    if (
+    return !(
       centerX + maxDim < slideOffsetX ||
       centerX - maxDim > slideOffsetX + slideW
-    ) {
-      continue;
-    }
+    );
+  });
 
-    await drawLayerOnSlide(ctx, layer, slideOffsetX, scale);
+  const loadedImages = new Map<string, HTMLImageElement>();
+  await Promise.all(
+    intersectingLayers.map(async (layer) => {
+      if (layer.type !== 'image') return;
+      try {
+        const img = await loadImageElement(layer.dataUrl);
+        loadedImages.set(layer.id, img);
+      } catch (err) {
+        console.warn('Falha ao desenhar camada de imagem:', layer.name, err);
+      }
+    })
+  );
+
+  for (const layer of intersectingLayers) {
+    drawLayerOnSlide(ctx, layer, slideOffsetX, scale, loadedImages.get(layer.id));
   }
 
   return canvas;
 }
 
-async function drawLayerOnSlide(
+function drawLayerOnSlide(
   ctx: CanvasRenderingContext2D,
   layer: CanvasLayer,
   slideOffsetX: number,
-  scale: number
+  scale: number,
+  preloadedImg?: HTMLImageElement
 ) {
   ctx.save();
   ctx.scale(scale, scale);
@@ -172,9 +184,8 @@ async function drawLayerOnSlide(
   const halfH = layer.height / 2;
 
   if (layer.type === 'image') {
-    try {
-      const img = await loadImageElement(layer.dataUrl);
-
+    const img = preloadedImg;
+    if (img) {
       if (layer.shadowBlur && layer.shadowBlur > 0) {
         ctx.save();
         ctx.shadowBlur = layer.shadowBlur;
@@ -240,8 +251,6 @@ async function drawLayerOnSlide(
         ctx.stroke();
         ctx.restore();
       }
-    } catch (err) {
-      console.warn('Falha ao desenhar camada de imagem:', layer.name, err);
     }
   } else if (layer.type === 'text') {
     if (layer.backgroundColor && layer.backgroundColor !== 'transparent') {
@@ -331,11 +340,18 @@ export async function exportSlidesAsZip(
     .toLowerCase()
     .replace(/[^a-z0-9-_]+/g, '-');
 
-  for (let i = 0; i < slideIndices.length; i++) {
-    const slideIdx = slideIndices[i];
-    onProgress?.(i + 1, slideIndices.length);
-    const canvas = await renderSlideToCanvas(project, slideIdx, scale);
-    const blob = await canvasToBlob(canvas, format, quality);
+  let completed = 0;
+  const renderedSlides = await Promise.all(
+    slideIndices.map(async (slideIdx) => {
+      const canvas = await renderSlideToCanvas(project, slideIdx, scale);
+      const blob = await canvasToBlob(canvas, format, quality);
+      completed += 1;
+      onProgress?.(completed, slideIndices.length);
+      return { slideIdx, blob };
+    })
+  );
+
+  for (const { slideIdx, blob } of renderedSlides) {
     const slideNum = String(slideIdx + 1).padStart(2, '0');
     zip.file(`${safeTitle}-quadro-${slideNum}.${ext}`, blob);
   }

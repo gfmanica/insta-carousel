@@ -23,6 +23,99 @@ type CropDragMode =
   | 'e'
   | 'w';
 
+interface CropStageProps {
+  layer: ImageLayer;
+  crop: ImageCrop;
+  stageRef: React.RefObject<HTMLDivElement | null>;
+  onStartDrag: (e: React.PointerEvent<HTMLElement>, mode: CropDragMode) => void;
+  onPointerMove: (e: React.PointerEvent<HTMLElement>) => void;
+  onEndDrag: () => void;
+}
+
+const CropStage: React.FC<CropStageProps> = ({
+  layer,
+  crop,
+  stageRef,
+  onStartDrag,
+  onPointerMove,
+  onEndDrag,
+}) => (
+  <div className="p-3 sm:p-6 bg-studio-bg flex items-center justify-center overflow-hidden min-h-[260px] sm:min-h-[360px]">
+    <div
+      ref={stageRef}
+      className="relative inline-block max-w-full max-h-[340px] sm:max-h-[400px] select-none shadow-2xl touch-none"
+    >
+      <img
+        src={layer.dataUrl}
+        alt={layer.name}
+        draggable={false}
+        className="max-h-[340px] sm:max-h-[400px] w-auto block opacity-30 pointer-events-none select-none"
+      />
+
+      <div
+        onPointerDown={(e) => onStartDrag(e, 'move')}
+        onPointerMove={onPointerMove}
+        onPointerUp={onEndDrag}
+        onLostPointerCapture={onEndDrag}
+        style={{
+          left: `${crop.x * 100}%`,
+          top: `${crop.y * 100}%`,
+          width: `${crop.width * 100}%`,
+          height: `${crop.height * 100}%`,
+        }}
+        className="absolute border border-accent shadow-[0_0_0_9999px_rgba(0,0,0,0.6)] cursor-move overflow-hidden"
+      >
+        <img
+          src={layer.dataUrl}
+          alt=""
+          draggable={false}
+          style={{
+            width: `${100 / Math.max(0.01, crop.width)}%`,
+            height: `${100 / Math.max(0.01, crop.height)}%`,
+            maxWidth: 'none',
+            maxHeight: 'none',
+            transform: `translate(${-crop.x * 100}%, ${-crop.y * 100}%)`,
+          }}
+          className="pointer-events-none select-none block"
+        />
+
+        <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none">
+          <div className="border-r border-b border-white/25" />
+          <div className="border-r border-b border-white/25" />
+          <div className="border-b border-white/25" />
+          <div className="border-r border-b border-white/25" />
+          <div className="border-r border-b border-white/25" />
+          <div className="border-b border-white/25" />
+          <div className="border-r border-white/25" />
+          <div className="border-r border-white/25" />
+          <div />
+        </div>
+
+        {(
+          [
+            { mode: 'nw', cls: 'top-0 left-0 cursor-nwse-resize' },
+            { mode: 'ne', cls: 'top-0 right-0 cursor-nesw-resize' },
+            { mode: 'sw', cls: 'bottom-0 left-0 cursor-nesw-resize' },
+            { mode: 'se', cls: 'bottom-0 right-0 cursor-nwse-resize' },
+            { mode: 'n', cls: 'top-0 left-1/2 -translate-x-1/2 cursor-ns-resize' },
+            { mode: 's', cls: 'bottom-0 left-1/2 -translate-x-1/2 cursor-ns-resize' },
+            { mode: 'w', cls: 'top-1/2 left-0 -translate-y-1/2 cursor-ew-resize' },
+            { mode: 'e', cls: 'top-1/2 right-0 -translate-y-1/2 cursor-ew-resize' },
+          ] as const
+        ).map((h) => (
+          <div
+            key={h.mode}
+            onPointerDown={(e) => onStartDrag(e, h.mode)}
+            onPointerMove={onPointerMove}
+            onPointerUp={onEndDrag}
+            className={`absolute ${h.cls} w-3 h-3 bg-white border border-accent z-20`}
+          />
+        ))}
+      </div>
+    </div>
+  </div>
+);
+
 export const CropModal: React.FC<CropModalProps> = ({
   layer,
   onClose,
@@ -38,7 +131,7 @@ export const CropModal: React.FC<CropModalProps> = ({
     height: 1,
   });
 
-  const [dragState, setDragState] = useState<{
+  const dragStateRef = useRef<{
     mode: CropDragMode;
     startX: number;
     startY: number;
@@ -76,28 +169,28 @@ export const CropModal: React.FC<CropModalProps> = ({
     };
     dialog.addEventListener('close', handleClose);
 
-    let cleanupClick: (() => void) | undefined;
-    if (!('closedBy' in HTMLDialogElement.prototype)) {
-      const handleBackdropClick = (event: MouseEvent) => {
-        if (event.target !== dialog) return;
-        const rect = dialog.getBoundingClientRect();
-        const isDialogContent =
-          rect.top <= event.clientY &&
-          event.clientY <= rect.top + rect.height &&
-          rect.left <= event.clientX &&
-          event.clientX <= rect.left + rect.width;
-        if (!isDialogContent) {
-          dialog.close();
-        }
-      };
+    const needsBackdropFallback = !('closedBy' in HTMLDialogElement.prototype);
+    const handleBackdropClick = (event: MouseEvent) => {
+      if (event.target !== dialog) return;
+      const rect = dialog.getBoundingClientRect();
+      const isDialogContent =
+        rect.top <= event.clientY &&
+        event.clientY <= rect.top + rect.height &&
+        rect.left <= event.clientX &&
+        event.clientX <= rect.left + rect.width;
+      if (!isDialogContent) {
+        dialog.close();
+      }
+    };
+    if (needsBackdropFallback) {
       dialog.addEventListener('click', handleBackdropClick);
-      cleanupClick = () =>
-        dialog.removeEventListener('click', handleBackdropClick);
     }
 
     return () => {
       dialog.removeEventListener('close', handleClose);
-      cleanupClick?.();
+      if (needsBackdropFallback) {
+        dialog.removeEventListener('click', handleBackdropClick);
+      }
     };
   }, [onClose]);
 
@@ -110,15 +203,16 @@ export const CropModal: React.FC<CropModalProps> = ({
     e.stopPropagation();
     if (e.button !== 0) return;
     e.currentTarget.setPointerCapture(e.pointerId);
-    setDragState({
+    dragStateRef.current = {
       mode,
       startX: e.clientX,
       startY: e.clientY,
       initialCrop: { ...crop },
-    });
+    };
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLElement>) => {
+    const dragState = dragStateRef.current;
     if (!dragState || !stageRef.current) return;
     if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
 
@@ -166,7 +260,7 @@ export const CropModal: React.FC<CropModalProps> = ({
   };
 
   const endCropDrag = () => {
-    setDragState(null);
+    dragStateRef.current = null;
   };
 
   const applyAspectRatioPreset = (targetRatio: number | null) => {
@@ -267,95 +361,14 @@ export const CropModal: React.FC<CropModalProps> = ({
         </div>
 
         {/* Interactive Crop Stage */}
-        <div className="p-3 sm:p-6 bg-studio-bg flex items-center justify-center overflow-hidden min-h-[260px] sm:min-h-[360px]">
-          <div
-            ref={stageRef}
-            className="relative inline-block max-w-full max-h-[340px] sm:max-h-[400px] select-none shadow-2xl touch-none"
-          >
-            <img
-              src={layer.dataUrl}
-              alt={layer.name}
-              draggable={false}
-              className="max-h-[340px] sm:max-h-[400px] w-auto block opacity-30 pointer-events-none select-none"
-            />
-
-            {/* Active Highlighted Crop Box */}
-            <div
-              onPointerDown={(e) => startCropDrag(e, 'move')}
-              onPointerMove={handlePointerMove}
-              onPointerUp={endCropDrag}
-              onLostPointerCapture={endCropDrag}
-              style={{
-                left: `${crop.x * 100}%`,
-                top: `${crop.y * 100}%`,
-                width: `${crop.width * 100}%`,
-                height: `${crop.height * 100}%`,
-              }}
-              className="absolute border border-accent shadow-[0_0_0_9999px_rgba(0,0,0,0.6)] cursor-move overflow-hidden"
-            >
-              <img
-                src={layer.dataUrl}
-                alt=""
-                draggable={false}
-                style={{
-                  width: `${100 / Math.max(0.01, crop.width)}%`,
-                  height: `${100 / Math.max(0.01, crop.height)}%`,
-                  maxWidth: 'none',
-                  maxHeight: 'none',
-                  transform: `translate(${-crop.x * 100}%, ${-crop.y * 100}%)`,
-                }}
-                className="pointer-events-none select-none block"
-              />
-
-              {/* Rule of Thirds Grid Lines */}
-              <div className="absolute inset-0 grid grid-cols-3 grid-rows-3 pointer-events-none">
-                <div className="border-r border-b border-white/25" />
-                <div className="border-r border-b border-white/25" />
-                <div className="border-b border-white/25" />
-                <div className="border-r border-b border-white/25" />
-                <div className="border-r border-b border-white/25" />
-                <div className="border-b border-white/25" />
-                <div className="border-r border-white/25" />
-                <div className="border-r border-white/25" />
-                <div />
-              </div>
-
-              {/* 8 Resize Handles */}
-              {(
-                [
-                  { mode: 'nw', cls: 'top-0 left-0 cursor-nwse-resize' },
-                  { mode: 'ne', cls: 'top-0 right-0 cursor-nesw-resize' },
-                  { mode: 'sw', cls: 'bottom-0 left-0 cursor-nesw-resize' },
-                  { mode: 'se', cls: 'bottom-0 right-0 cursor-nwse-resize' },
-                  {
-                    mode: 'n',
-                    cls: 'top-0 left-1/2 -translate-x-1/2 cursor-ns-resize',
-                  },
-                  {
-                    mode: 's',
-                    cls: 'bottom-0 left-1/2 -translate-x-1/2 cursor-ns-resize',
-                  },
-                  {
-                    mode: 'w',
-                    cls: 'top-1/2 left-0 -translate-y-1/2 cursor-ew-resize',
-                  },
-                  {
-                    mode: 'e',
-                    cls: 'top-1/2 right-0 -translate-y-1/2 cursor-ew-resize',
-                  },
-                ] as const
-              ).map((h) => (
-                <div
-                  key={h.mode}
-                  onPointerDown={(e) => startCropDrag(e, h.mode)}
-                  onPointerMove={handlePointerMove}
-                  onPointerUp={endCropDrag}
-                  className={`absolute ${h.cls} w-3 h-3 bg-white border border-accent z-20`}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
+        <CropStage
+          layer={layer}
+          crop={crop}
+          stageRef={stageRef}
+          onStartDrag={startCropDrag}
+          onPointerMove={handlePointerMove}
+          onEndDrag={endCropDrag}
+        />
 
         {/* Footer */}
         <div className="px-5 py-3.5 border-t border-studio-border bg-studio-panel flex items-center justify-between">

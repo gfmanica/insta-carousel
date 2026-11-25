@@ -350,9 +350,9 @@ export async function saveProjectToBrowser(project: CarouselProject): Promise<vo
 export async function clearProjectInBrowser(): Promise<CarouselProject> {
   const fresh = createDefaultProject();
   try {
-    for (const id of persistedAssetIds) {
-      await del(`${ASSET_PREFIX}${id}`);
-    }
+    await Promise.all(
+      Array.from(persistedAssetIds, (id) => del(`${ASSET_PREFIX}${id}`))
+    );
     persistedAssetIds.clear();
     await del(STORAGE_KEY);
     localStorage.removeItem(STORAGE_KEY);

@@ -39,6 +39,137 @@ interface TopToolbarProps {
   onToggleRightSidebar: () => void;
 }
 
+interface ToolbarCenterControlsProps {
+  formatId: InstagramFormatId;
+  slidesCount: number;
+  showSeamGuides: boolean;
+  zoom: number;
+  setZoom: React.Dispatch<React.SetStateAction<number>>;
+  onFitToScreen: () => void;
+  onFormatChange: (id: InstagramFormatId) => void;
+  onSlidesCountChange: (delta: number) => void;
+  onToggleSeamGuides: () => void;
+}
+
+const ToolbarCenterControls: React.FC<ToolbarCenterControlsProps> = ({
+  formatId,
+  slidesCount,
+  showSeamGuides,
+  zoom,
+  setZoom,
+  onFitToScreen,
+  onFormatChange,
+  onSlidesCountChange,
+  onToggleSeamGuides,
+}) => (
+  <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto max-w-full w-full md:w-auto order-3 md:order-2 pb-0.5 md:pb-0 no-scrollbar justify-between md:justify-center">
+    {/* Format Segmented Control */}
+    <div className="flex items-center bg-studio-bg p-0.5 rounded-lg border border-studio-border shrink-0">
+      {(Object.keys(INSTAGRAM_FORMATS) as InstagramFormatId[]).map((fId) => {
+        const fmt = INSTAGRAM_FORMATS[fId];
+        const active = formatId === fId;
+        return (
+          <button
+            key={fId}
+            type="button"
+            onClick={() => onFormatChange(fId)}
+            title={fmt.description}
+            className={`btn-press px-2 sm:px-2.5 py-1 rounded-md text-xs font-medium flex items-center gap-1 transition-colors ${
+              active
+                ? 'bg-studio-card text-white shadow-xs border border-studio-border'
+                : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <span className="font-mono text-[11px]">{fmt.ratioLabel}</span>
+            <span className="hidden xl:inline text-[11px] text-zinc-400">
+              {fmt.name.split(' ')[0]}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+
+    {/* Slide Count Stepper */}
+    <div className="flex items-center gap-1 bg-studio-bg px-1.5 sm:px-2 py-0.5 rounded-lg border border-studio-border h-[30px] shrink-0">
+      <span className="hidden sm:inline text-[11px] text-zinc-400">
+        Quadros
+      </span>
+      <button
+        type="button"
+        onClick={() => onSlidesCountChange(-1)}
+        disabled={slidesCount <= 1}
+        title="Remover último quadro"
+        className="btn-press w-5 h-5 rounded hover:bg-studio-hover disabled:opacity-30 flex items-center justify-center text-zinc-300"
+      >
+        <Minus className="w-3 h-3" />
+      </button>
+      <span className="text-xs font-mono font-medium text-white w-5 text-center">
+        {slidesCount}
+      </span>
+      <button
+        type="button"
+        onClick={() => onSlidesCountChange(1)}
+        disabled={slidesCount >= MAX_SLIDES}
+        title={`Adicionar quadro (máx ${MAX_SLIDES})`}
+        className="btn-press w-5 h-5 rounded hover:bg-studio-hover disabled:opacity-30 flex items-center justify-center text-zinc-300"
+      >
+        <Plus className="w-3 h-3" />
+      </button>
+    </div>
+
+    {/* Seam Guides Toggle */}
+    <button
+      type="button"
+      onClick={onToggleSeamGuides}
+      title="Mostrar/ocultar linhas de corte entre os quadros"
+      className={`btn-press h-[30px] px-2 sm:px-2.5 rounded-lg text-xs font-medium flex items-center gap-1.5 border shrink-0 ${
+        showSeamGuides
+          ? 'bg-accent/10 text-accent border-accent/30'
+          : 'bg-studio-bg text-zinc-400 border-studio-border hover:text-zinc-200'
+      }`}
+    >
+      <Columns3 className="w-3.5 h-3.5" />
+      <span className="hidden md:inline text-[11px]">Guias</span>
+    </button>
+
+    {/* Zoom Controls */}
+    <div className="flex items-center bg-studio-bg px-1 rounded-lg border border-studio-border h-[30px] shrink-0">
+      <button
+        type="button"
+        onClick={() => setZoom((z) => Math.max(0.12, +(z - 0.05).toFixed(2)))}
+        title="Diminuir zoom"
+        className="btn-press p-1 rounded text-zinc-400 hover:text-white"
+      >
+        <ZoomOut className="w-3.5 h-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={onFitToScreen}
+        title="Ajustar zoom à tela"
+        className="text-[11px] font-mono text-zinc-300 hover:text-white px-1"
+      >
+        {Math.round(zoom * 100)}%
+      </button>
+      <button
+        type="button"
+        onClick={() => setZoom((z) => Math.min(1.5, +(z + 0.05).toFixed(2)))}
+        title="Aumentar zoom"
+        className="btn-press p-1 rounded text-zinc-400 hover:text-white"
+      >
+        <ZoomIn className="w-3.5 h-3.5" />
+      </button>
+      <button
+        type="button"
+        onClick={onFitToScreen}
+        title="Centralizar e caber na tela"
+        className="btn-press p-1 rounded text-zinc-400 hover:text-white border-l border-studio-border ml-0.5 pl-1.5"
+      >
+        <Maximize2 className="w-3 h-3" />
+      </button>
+    </div>
+  </div>
+);
+
 export const TopToolbar: React.FC<TopToolbarProps> = React.memo(({
   project,
   zoom,
@@ -111,6 +242,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = React.memo(({
             <input
               ref={titleInputRef}
               type="text"
+              aria-label="Nome do projeto"
               value={project.title}
               onChange={(e) =>
                 onUpdateProject((p) => ({ ...p, title: e.target.value }))
@@ -171,117 +303,22 @@ export const TopToolbar: React.FC<TopToolbarProps> = React.memo(({
       </div>
 
       {/* Center: Format Selector, Slide Counter, Guides & Zoom */}
-      <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto max-w-full w-full md:w-auto order-3 md:order-2 pb-0.5 md:pb-0 no-scrollbar justify-between md:justify-center">
-        {/* Format Segmented Control */}
-        <div className="flex items-center bg-studio-bg p-0.5 rounded-lg border border-studio-border shrink-0">
-          {(Object.keys(INSTAGRAM_FORMATS) as InstagramFormatId[]).map((fId) => {
-            const fmt = INSTAGRAM_FORMATS[fId];
-            const active = project.formatId === fId;
-            return (
-              <button
-                key={fId}
-                type="button"
-                onClick={() => handleFormatChange(fId)}
-                title={fmt.description}
-                className={`btn-press px-2 sm:px-2.5 py-1 rounded-md text-xs font-medium flex items-center gap-1 transition-colors ${
-                  active
-                    ? 'bg-studio-card text-white shadow-xs border border-studio-border'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                <span className="font-mono text-[11px]">{fmt.ratioLabel}</span>
-                <span className="hidden xl:inline text-[11px] text-zinc-400">
-                  {fmt.name.split(' ')[0]}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Slide Count Stepper */}
-        <div className="flex items-center gap-1 bg-studio-bg px-1.5 sm:px-2 py-0.5 rounded-lg border border-studio-border h-[30px] shrink-0">
-          <span className="hidden sm:inline text-[11px] text-zinc-400">
-            Quadros
-          </span>
-          <button
-            type="button"
-            onClick={() => handleSlidesCountChange(-1)}
-            disabled={project.slidesCount <= 1}
-            title="Remover último quadro"
-            className="btn-press w-5 h-5 rounded hover:bg-studio-hover disabled:opacity-30 flex items-center justify-center text-zinc-300"
-          >
-            <Minus className="w-3 h-3" />
-          </button>
-          <span className="text-xs font-mono font-medium text-white w-5 text-center">
-            {project.slidesCount}
-          </span>
-          <button
-            type="button"
-            onClick={() => handleSlidesCountChange(1)}
-            disabled={project.slidesCount >= MAX_SLIDES}
-            title={`Adicionar quadro (máx ${MAX_SLIDES})`}
-            className="btn-press w-5 h-5 rounded hover:bg-studio-hover disabled:opacity-30 flex items-center justify-center text-zinc-300"
-          >
-            <Plus className="w-3 h-3" />
-          </button>
-        </div>
-
-        {/* Seam Guides Toggle */}
-        <button
-          type="button"
-          onClick={() =>
-            onUpdateProject((p) => ({
-              ...p,
-              showSeamGuides: !p.showSeamGuides,
-            }))
-          }
-          title="Mostrar/ocultar linhas de corte entre os quadros"
-          className={`btn-press h-[30px] px-2 sm:px-2.5 rounded-lg text-xs font-medium flex items-center gap-1.5 border shrink-0 ${
-            project.showSeamGuides
-              ? 'bg-accent/10 text-accent border-accent/30'
-              : 'bg-studio-bg text-zinc-400 border-studio-border hover:text-zinc-200'
-          }`}
-        >
-          <Columns3 className="w-3.5 h-3.5" />
-          <span className="hidden md:inline text-[11px]">Guias</span>
-        </button>
-
-        {/* Zoom Controls (Visible on both mobile & desktop) */}
-        <div className="flex items-center bg-studio-bg px-1 rounded-lg border border-studio-border h-[30px] shrink-0">
-          <button
-            type="button"
-            onClick={() => setZoom((z) => Math.max(0.12, +(z - 0.05).toFixed(2)))}
-            title="Diminuir zoom"
-            className="btn-press p-1 rounded text-zinc-400 hover:text-white"
-          >
-            <ZoomOut className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={onFitToScreen}
-            title="Ajustar zoom à tela"
-            className="text-[11px] font-mono text-zinc-300 hover:text-white px-1"
-          >
-            {Math.round(zoom * 100)}%
-          </button>
-          <button
-            type="button"
-            onClick={() => setZoom((z) => Math.min(1.5, +(z + 0.05).toFixed(2)))}
-            title="Aumentar zoom"
-            className="btn-press p-1 rounded text-zinc-400 hover:text-white"
-          >
-            <ZoomIn className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={onFitToScreen}
-            title="Centralizar e caber na tela"
-            className="btn-press p-1 rounded text-zinc-400 hover:text-white border-l border-studio-border ml-0.5 pl-1.5"
-          >
-            <Maximize2 className="w-3 h-3" />
-          </button>
-        </div>
-      </div>
+      <ToolbarCenterControls
+        formatId={project.formatId}
+        slidesCount={project.slidesCount}
+        showSeamGuides={project.showSeamGuides}
+        zoom={zoom}
+        setZoom={setZoom}
+        onFitToScreen={onFitToScreen}
+        onFormatChange={handleFormatChange}
+        onSlidesCountChange={handleSlidesCountChange}
+        onToggleSeamGuides={() =>
+          onUpdateProject((p) => ({
+            ...p,
+            showSeamGuides: !p.showSeamGuides,
+          }))
+        }
+      />
 
       {/* Right: Shortcuts, Reset, GIF Studio, Export */}
       <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 order-2 md:order-3">

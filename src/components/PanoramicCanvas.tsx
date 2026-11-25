@@ -7,9 +7,10 @@ import {
   FlipVertical,
   Trash2,
   Copy,
+  Plus,
 } from 'lucide-react';
 import type { CarouselProject, CanvasLayer, ImageLayer } from '../types/carousel';
-import { INSTAGRAM_FORMATS } from '../types/carousel';
+import { INSTAGRAM_FORMATS, MAX_SLIDES } from '../types/carousel';
 
 interface PanoramicCanvasProps {
   project: CarouselProject;
@@ -32,6 +33,7 @@ interface PanoramicCanvasProps {
   ) => void;
   lastClickedPoint: { x: number; y: number } | null;
   onUpdateLastClickedPoint: (point: { x: number; y: number }) => void;
+  onAddSlide: () => void;
 }
 
 type InteractionMode =
@@ -73,6 +75,7 @@ export const PanoramicCanvas: React.FC<PanoramicCanvasProps> = ({
   onAddFiles,
   lastClickedPoint,
   onUpdateLastClickedPoint,
+  onAddSlide,
 }) => {
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [activeSnapX, setActiveSnapX] = useState<number | null>(null);
@@ -572,7 +575,9 @@ export const PanoramicCanvas: React.FC<PanoramicCanvasProps> = ({
         data-canvas-bg="true"
         className="mx-auto my-auto relative shrink-0"
         style={{
-          width: `${totalWidth * zoom + 40}px`,
+          width: `${
+            totalWidth * zoom + (project.slidesCount < MAX_SLIDES ? 104 : 40)
+          }px`,
           height: `${totalHeight * zoom + 88}px`,
           padding: '44px 20px 20px 20px',
         }}
@@ -598,12 +603,14 @@ export const PanoramicCanvas: React.FC<PanoramicCanvasProps> = ({
           ))}
         </div>
 
+        {/* Stage Row: Panoramic Stage + Quick Add Slide (+) Button at the end */}
+        <div className="flex items-stretch gap-3">
         {/* Panoramic Stage Wrapper:
             1) Base Clipped Layer renders what actually appears on the slides
             2) Top Overlay Layer renders crisp selection outlines, handles, and floating toolbar */}
         <div
           ref={stageWrapperRef}
-          className="relative shadow-2xl ring-1 ring-white/10"
+          className="relative shadow-2xl ring-1 ring-white/10 shrink-0"
           style={{
             width: `${totalWidth * zoom}px`,
             height: `${totalHeight * zoom}px`,
@@ -1017,6 +1024,29 @@ export const PanoramicCanvas: React.FC<PanoramicCanvasProps> = ({
               );
             })}
           </div>
+        </div>
+
+        {/* Quick Add Slide (+) Button at the end of the last slide */}
+        {project.slidesCount < MAX_SLIDES && (
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddSlide();
+            }}
+            title={`Adicionar novo quadro (${project.slidesCount + 1}/${MAX_SLIDES})`}
+            aria-label="Adicionar novo quadro"
+            className="btn-press w-13 shrink-0 rounded-xl border border-dashed border-zinc-700 hover:border-accent bg-studio-panel/50 hover:bg-accent/10 text-zinc-400 hover:text-accent flex flex-col items-center justify-center gap-1.5 transition-colors cursor-pointer"
+          >
+            <div className="w-8 h-8 rounded-full bg-studio-card border border-studio-border group-hover:border-accent flex items-center justify-center shadow-xs">
+              <Plus className="w-4 h-4" />
+            </div>
+            <span className="text-[10px] font-mono">
+              +{String(project.slidesCount + 1).padStart(2, '0')}
+            </span>
+          </button>
+        )}
         </div>
       </div>
     </main>

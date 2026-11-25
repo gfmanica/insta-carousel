@@ -1,3 +1,5 @@
+export const MAX_SLIDES = 20;
+
 export type InstagramFormatId = 'square' | 'portrait' | 'grid2025' | 'story' | 'landscape';
 
 export interface InstagramFormat {

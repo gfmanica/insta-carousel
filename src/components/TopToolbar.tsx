@@ -16,7 +16,7 @@ import {
   Keyboard,
 } from 'lucide-react';
 import type { CarouselProject, InstagramFormatId } from '../types/carousel';
-import { INSTAGRAM_FORMATS } from '../types/carousel';
+import { INSTAGRAM_FORMATS, MAX_SLIDES } from '../types/carousel';
 
 interface TopToolbarProps {
   project: CarouselProject;
@@ -73,7 +73,7 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
 
   const handleSlidesCountChange = (delta: number) => {
     onUpdateProject((prev) => {
-      const nextCount = Math.max(1, Math.min(10, prev.slidesCount + delta));
+      const nextCount = Math.max(1, Math.min(MAX_SLIDES, prev.slidesCount + delta));
       return {
         ...prev,
         slidesCount: nextCount,
@@ -212,14 +212,14 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
           >
             <Minus className="w-3 h-3" />
           </button>
-          <span className="text-xs font-mono font-medium text-white w-4 text-center">
+          <span className="text-xs font-mono font-medium text-white w-5 text-center">
             {project.slidesCount}
           </span>
           <button
             type="button"
             onClick={() => handleSlidesCountChange(1)}
-            disabled={project.slidesCount >= 10}
-            title="Adicionar quadro (máx 10)"
+            disabled={project.slidesCount >= MAX_SLIDES}
+            title={`Adicionar quadro (máx ${MAX_SLIDES})`}
             className="btn-press w-5 h-5 rounded hover:bg-studio-hover disabled:opacity-30 flex items-center justify-center text-zinc-300"
           >
             <Plus className="w-3 h-3" />

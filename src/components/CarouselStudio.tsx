@@ -8,7 +8,7 @@ import type {
   ImageCrop,
   ImageAsset,
 } from '../types/carousel';
-import { INSTAGRAM_FORMATS } from '../types/carousel';
+import { INSTAGRAM_FORMATS, MAX_SLIDES } from '../types/carousel';
 import {
   createDefaultProject,
   loadProjectFromBrowser,
@@ -944,6 +944,12 @@ export const CarouselStudio: React.FC = () => {
           onAddFiles={handleAddFiles}
           lastClickedPoint={lastClickedPoint}
           onUpdateLastClickedPoint={setLastClickedPoint}
+          onAddSlide={() =>
+            handleUpdateProject((prev) => ({
+              ...prev,
+              slidesCount: Math.min(MAX_SLIDES, prev.slidesCount + 1),
+            }))
+          }
         />
 
         <RightInspector

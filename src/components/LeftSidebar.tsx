@@ -357,7 +357,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept="image/*,.heic,.heif,.HEIC,.HEIF"
                 multiple
                 className="hidden"
                 onChange={(e) => {

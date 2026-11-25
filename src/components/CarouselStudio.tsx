@@ -48,6 +48,7 @@ export const CarouselStudio: React.FC = () => {
     y: number;
   } | null>(null);
   const [copiedLayer, setCopiedLayer] = useState<CanvasLayer | null>(null);
+  const [importingCount, setImportingCount] = useState<number>(0);
 
   // Resizable & Collapsible Side Panels state
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState<boolean>(true);
@@ -214,11 +215,27 @@ export const CarouselStudio: React.FC = () => {
     []
   );
 
-  // Unified file upload / drop / clipboard paste handler
+  const isHeicFile = (file: File): boolean =>
+    file.type === 'image/heic' ||
+    file.type === 'image/heif' ||
+    /\.(heic|heif)$/i.test(file.name);
+
+  const isSupportedImageFile = (file: File): boolean =>
+    file.type.startsWith('image/') || isHeicFile(file);
+
+  const blobToDataUrl = (blob: Blob): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => resolve((ev.target?.result as string) || '');
+      reader.onerror = () => reject(new Error('Falha ao ler arquivo de imagem.'));
+      reader.readAsDataURL(blob);
+    });
+
+  // Unified file upload / drop / clipboard paste handler (including HEIC/HEIF conversion)
   const handleAddFiles = useCallback(
     (files: FileList | File[], targetPoint?: { x: number; y: number }) => {
       const fileArray = Array.from(files).filter((f) =>
-        f.type.startsWith('image/')
+        isSupportedImageFile(f)
       );
       if (fileArray.length === 0) return;
 
@@ -227,10 +244,25 @@ export const CarouselStudio: React.FC = () => {
       setPast((p) => [...p.slice(-29), projectRef.current]);
       setFuture([]);
 
-      fileArray.forEach((file, idx) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          const dataUrl = ev.target?.result as string;
+      fileArray.forEach(async (file, idx) => {
+        const heic = isHeicFile(file);
+        if (heic) setImportingCount((c) => c + 1);
+
+        try {
+          let blobToRead: Blob = file;
+          let resolvedName = file.name;
+
+          if (heic) {
+            const { heicTo } = await import('heic-to');
+            blobToRead = await heicTo({
+              blob: file,
+              type: 'image/jpeg',
+              quality: 0.92,
+            });
+            resolvedName = file.name.replace(/\.(heic|heif)$/i, '.jpg');
+          }
+
+          const dataUrl = await blobToDataUrl(blobToRead);
           if (!dataUrl) return;
 
           const img = new Image();
@@ -246,8 +278,8 @@ export const CarouselStudio: React.FC = () => {
             const newAsset: ImageAsset = {
               id: assetId,
               name:
-                file.name && file.name !== 'image.png'
-                  ? file.name
+                resolvedName && resolvedName !== 'image.png'
+                  ? resolvedName
                   : `imagem-colada-${new Date().toLocaleTimeString('pt-BR', {
                       hour: '2-digit',
                       minute: '2-digit',
@@ -332,8 +364,11 @@ export const CarouselStudio: React.FC = () => {
             setSelectedLayerId(layerId);
           };
           img.src = dataUrl;
-        };
-        reader.readAsDataURL(file);
+        } catch (err) {
+          console.error('Erro ao importar imagem (incluindo HEIC):', err);
+        } finally {
+          if (heic) setImportingCount((c) => Math.max(0, c - 1));
+        }
       });
     },
     []
@@ -712,7 +747,7 @@ export const CarouselStudio: React.FC = () => {
         e.clipboardData.files.length > 0
       ) {
         for (const file of Array.from(e.clipboardData.files)) {
-          if (file.type.startsWith('image/')) {
+          if (isSupportedImageFile(file)) {
             imageFiles.push(file);
           }
         }
@@ -966,6 +1001,17 @@ export const CarouselStudio: React.FC = () => {
           <span>Camadas ({project.layers.length})</span>
         </button>
       </nav>
+
+      {/* HEIC Conversion Status Toast */}
+      {importingCount > 0 && (
+        <div className="fixed bottom-16 md:bottom-4 left-1/2 -translate-x-1/2 z-50 bg-studio-panel/95 backdrop-blur-md border border-accent/40 text-zinc-100 px-3.5 py-2 rounded-lg shadow-xl text-xs font-medium flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+          <span>
+            Convertendo {importingCount}{' '}
+            {importingCount === 1 ? 'foto HEIC' : 'fotos HEIC'}...
+          </span>
+        </div>
+      )}
 
       {/* Native <dialog> Modals */}
       <ExportModal

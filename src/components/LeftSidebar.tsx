@@ -66,7 +66,7 @@ const PRESET_BACKGROUNDS = [
   },
 ];
 
-export const LeftSidebar: React.FC<LeftSidebarProps> = ({
+export const LeftSidebar: React.FC<LeftSidebarProps> = React.memo(({
   project,
   onUpdateProject,
   onSelectLayer,
@@ -166,6 +166,7 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
         assetId: asset.id,
         name: asset.name.replace(/\.[^/.]+$/, ''),
         dataUrl: asset.dataUrl,
+        thumbnailUrl: asset.thumbnailUrl,
         naturalWidth: asset.naturalWidth,
         naturalHeight: asset.naturalHeight,
         x: xPos,
@@ -448,8 +449,10 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
                       <div className="flex items-center gap-2.5">
                         <div className="w-11 h-11 rounded bg-studio-bg overflow-hidden shrink-0 border border-studio-border flex items-center justify-center">
                           <img
-                            src={asset.dataUrl}
+                            src={asset.thumbnailUrl || asset.dataUrl}
                             alt={asset.name}
+                            decoding="async"
+                            loading="lazy"
                             className="w-full h-full object-cover"
                           />
                         </div>
@@ -626,4 +629,13 @@ export const LeftSidebar: React.FC<LeftSidebarProps> = ({
       </div>
     </aside>
   );
-};
+}, (prev, next) =>
+  prev.isOpen === next.isOpen &&
+  prev.width === next.width &&
+  prev.lastClickedPoint === next.lastClickedPoint &&
+  prev.project.assets === next.project.assets &&
+  prev.project.slidesCount === next.project.slidesCount &&
+  prev.project.formatId === next.project.formatId &&
+  prev.project.backgroundColor === next.project.backgroundColor &&
+  prev.project.backgroundGradient === next.project.backgroundGradient
+);

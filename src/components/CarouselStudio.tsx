@@ -15,6 +15,7 @@ import {
   saveProjectToBrowser,
   clearProjectInBrowser,
 } from '../utils/storage';
+import { optimizeImportedImage } from '../utils/imageOptimizer';
 import { TopToolbar } from './TopToolbar';
 import { LeftSidebar } from './LeftSidebar';
 import { PanoramicCanvas } from './PanoramicCanvas';
@@ -59,6 +60,8 @@ export const CarouselStudio: React.FC = () => {
 
   const projectRef = useRef(project);
   projectRef.current = project;
+  const saveStatusRef = useRef(saveStatus);
+  saveStatusRef.current = saveStatus;
   const lastClickedPointRef = useRef(lastClickedPoint);
   lastClickedPointRef.current = lastClickedPoint;
   const copiedLayerRef = useRef(copiedLayer);
@@ -93,15 +96,17 @@ export const CarouselStudio: React.FC = () => {
     };
   }, []);
 
-  // Auto-save to browser storage whenever project state changes
+  // Auto-save to browser storage whenever project state changes (debounced so drag stays 60fps)
   useEffect(() => {
     if (!isLoaded) return;
-    setSaveStatus('saving');
+    if (saveStatusRef.current !== 'saving') {
+      setSaveStatus('saving');
+    }
     const timer = setTimeout(() => {
       saveProjectToBrowser(project).then(() => {
         setSaveStatus('saved');
       });
-    }, 280);
+    }, 700);
     return () => clearTimeout(timer);
   }, [project, isLoaded]);
 
@@ -223,15 +228,7 @@ export const CarouselStudio: React.FC = () => {
   const isSupportedImageFile = (file: File): boolean =>
     file.type.startsWith('image/') || isHeicFile(file);
 
-  const blobToDataUrl = (blob: Blob): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (ev) => resolve((ev.target?.result as string) || '');
-      reader.onerror = () => reject(new Error('Falha ao ler arquivo de imagem.'));
-      reader.readAsDataURL(blob);
-    });
-
-  // Unified file upload / drop / clipboard paste handler (including HEIC/HEIF conversion)
+  // Unified file upload / drop / clipboard paste handler (including HEIC/HEIF conversion & image optimization)
   const handleAddFiles = useCallback(
     (files: FileList | File[], targetPoint?: { x: number; y: number }) => {
       const fileArray = Array.from(files).filter((f) =>
@@ -251,6 +248,7 @@ export const CarouselStudio: React.FC = () => {
         try {
           let blobToRead: Blob = file;
           let resolvedName = file.name;
+          let resolvedMime = file.type || 'image/jpeg';
 
           if (heic) {
             const { heicTo } = await import('heic-to');
@@ -260,110 +258,108 @@ export const CarouselStudio: React.FC = () => {
               quality: 0.92,
             });
             resolvedName = file.name.replace(/\.(heic|heif)$/i, '.jpg');
+            resolvedMime = 'image/jpeg';
           }
 
-          const dataUrl = await blobToDataUrl(blobToRead);
-          if (!dataUrl) return;
+          const optimized = await optimizeImportedImage(blobToRead, resolvedMime);
+          if (!optimized.dataUrl) return;
 
-          const img = new Image();
-          img.onload = () => {
-            const currentFormat = INSTAGRAM_FORMATS[projectRef.current.formatId];
-            const totalW =
-              currentFormat.width * projectRef.current.slidesCount;
-            const totalH = currentFormat.height;
+          const currentFormat = INSTAGRAM_FORMATS[projectRef.current.formatId];
+          const totalW = currentFormat.width * projectRef.current.slidesCount;
+          const totalH = currentFormat.height;
 
-            const assetId = `asset-${Date.now()}-${Math.random()
-              .toString(36)
-              .slice(2, 7)}`;
-            const newAsset: ImageAsset = {
-              id: assetId,
-              name:
-                resolvedName && resolvedName !== 'image.png'
-                  ? resolvedName
-                  : `imagem-colada-${new Date().toLocaleTimeString('pt-BR', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      second: '2-digit',
-                    })}.png`,
-              dataUrl,
-              naturalWidth: img.naturalWidth || 800,
-              naturalHeight: img.naturalHeight || 800,
-              createdAt: Date.now(),
-            };
-
-            const maxInitDim = Math.min(currentFormat.width * 0.72, 820);
-            const ratio =
-              newAsset.naturalWidth / Math.max(1, newAsset.naturalHeight);
-            let w = maxInitDim;
-            let h = maxInitDim / ratio;
-            if (h > currentFormat.height * 0.78) {
-              h = currentFormat.height * 0.78;
-              w = h * ratio;
-            }
-
-            const layerId = `layer-${Date.now()}-${Math.random()
-              .toString(36)
-              .slice(2, 6)}`;
-
-            const cascadeOffset = idx * 32;
-            const xPos = resolvedPoint
-              ? Math.round(
-                  Math.max(
-                    -w * 0.4,
-                    Math.min(
-                      totalW - w * 0.6,
-                      resolvedPoint.x - w / 2 + cascadeOffset
-                    )
-                  )
-                )
-              : projectRef.current.slidesCount > 1
-              ? Math.round(currentFormat.width - w / 2 + cascadeOffset)
-              : Math.round((currentFormat.width - w) / 2 + cascadeOffset);
-
-            const yPos = resolvedPoint
-              ? Math.round(
-                  Math.max(
-                    -h * 0.4,
-                    Math.min(
-                      totalH - h * 0.6,
-                      resolvedPoint.y - h / 2 + cascadeOffset
-                    )
-                  )
-                )
-              : Math.round((currentFormat.height - h) / 2 + cascadeOffset);
-
-            setProject((prev) => {
-              const maxZ = prev.layers.reduce((m, l) => Math.max(m, l.zIndex), 0);
-              const newLayer: ImageLayer = {
-                id: layerId,
-                type: 'image',
-                assetId,
-                name: newAsset.name.replace(/\.[^/.]+$/, ''),
-                dataUrl,
-                naturalWidth: newAsset.naturalWidth,
-                naturalHeight: newAsset.naturalHeight,
-                x: xPos,
-                y: yPos,
-                width: Math.round(w),
-                height: Math.round(h),
-                rotation: 0,
-                opacity: 1,
-                zIndex: maxZ + 1,
-                visible: true,
-                locked: false,
-                borderRadius: 8,
-                shadowBlur: 24,
-                shadowColor: 'rgba(0,0,0,0.4)',
-              };
-              return {
-                ...prev,
-                assets: [newAsset, ...prev.assets],
-                layers: [...prev.layers, newLayer],
-              };
-            });
-            setSelectedLayerId(layerId);
+          const assetId = `asset-${Date.now()}-${Math.random()
+            .toString(36)
+            .slice(2, 7)}`;
+          const newAsset: ImageAsset = {
+            id: assetId,
+            name:
+              resolvedName && resolvedName !== 'image.png'
+                ? resolvedName
+                : `imagem-colada-${new Date().toLocaleTimeString('pt-BR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                  })}.png`,
+            dataUrl: optimized.dataUrl,
+            thumbnailUrl: optimized.thumbnailUrl,
+            naturalWidth: optimized.naturalWidth,
+            naturalHeight: optimized.naturalHeight,
+            createdAt: Date.now(),
           };
-          img.src = dataUrl;
+
+          const maxInitDim = Math.min(currentFormat.width * 0.72, 820);
+          const ratio =
+            newAsset.naturalWidth / Math.max(1, newAsset.naturalHeight);
+          let w = maxInitDim;
+          let h = maxInitDim / ratio;
+          if (h > currentFormat.height * 0.78) {
+            h = currentFormat.height * 0.78;
+            w = h * ratio;
+          }
+
+          const layerId = `layer-${Date.now()}-${Math.random()
+            .toString(36)
+            .slice(2, 6)}`;
+
+          const cascadeOffset = idx * 32;
+          const xPos = resolvedPoint
+            ? Math.round(
+                Math.max(
+                  -w * 0.4,
+                  Math.min(
+                    totalW - w * 0.6,
+                    resolvedPoint.x - w / 2 + cascadeOffset
+                  )
+                )
+              )
+            : projectRef.current.slidesCount > 1
+            ? Math.round(currentFormat.width - w / 2 + cascadeOffset)
+            : Math.round((currentFormat.width - w) / 2 + cascadeOffset);
+
+          const yPos = resolvedPoint
+            ? Math.round(
+                Math.max(
+                  -h * 0.4,
+                  Math.min(
+                    totalH - h * 0.6,
+                    resolvedPoint.y - h / 2 + cascadeOffset
+                  )
+                )
+              )
+            : Math.round((currentFormat.height - h) / 2 + cascadeOffset);
+
+          setProject((prev) => {
+            const maxZ = prev.layers.reduce((m, l) => Math.max(m, l.zIndex), 0);
+            const newLayer: ImageLayer = {
+              id: layerId,
+              type: 'image',
+              assetId,
+              name: newAsset.name.replace(/\.[^/.]+$/, ''),
+              dataUrl: optimized.dataUrl,
+              thumbnailUrl: optimized.thumbnailUrl,
+              naturalWidth: newAsset.naturalWidth,
+              naturalHeight: newAsset.naturalHeight,
+              x: xPos,
+              y: yPos,
+              width: Math.round(w),
+              height: Math.round(h),
+              rotation: 0,
+              opacity: 1,
+              zIndex: maxZ + 1,
+              visible: true,
+              locked: false,
+              borderRadius: 8,
+              shadowBlur: 24,
+              shadowColor: 'rgba(0,0,0,0.4)',
+            };
+            return {
+              ...prev,
+              assets: [newAsset, ...prev.assets],
+              layers: [...prev.layers, newLayer],
+            };
+          });
+          setSelectedLayerId(layerId);
         } catch (err) {
           console.error('Erro ao importar imagem (incluindo HEIC):', err);
         } finally {
@@ -1019,31 +1015,39 @@ export const CarouselStudio: React.FC = () => {
         </div>
       )}
 
-      {/* Native <dialog> Modals */}
-      <ExportModal
-        isOpen={isExportModalOpen}
-        onClose={() => setIsExportModalOpen(false)}
-        project={project}
-      />
+      {/* Native <dialog> Modals (mounted only when open to avoid idle re-renders) */}
+      {isExportModalOpen && (
+        <ExportModal
+          isOpen={isExportModalOpen}
+          onClose={() => setIsExportModalOpen(false)}
+          project={project}
+        />
+      )}
 
-      <GifMakerModal
-        isOpen={isGifModalOpen}
-        onClose={() => setIsGifModalOpen(false)}
-        project={project}
-        onUpdateProject={handleUpdateProject}
-        onSelectLayer={setSelectedLayerId}
-      />
+      {isGifModalOpen && (
+        <GifMakerModal
+          isOpen={isGifModalOpen}
+          onClose={() => setIsGifModalOpen(false)}
+          project={project}
+          onUpdateProject={handleUpdateProject}
+          onSelectLayer={setSelectedLayerId}
+        />
+      )}
 
-      <CropModal
-        layer={cropTargetLayer}
-        onClose={() => setCropTargetLayer(null)}
-        onApplyCrop={handleApplyCrop}
-      />
+      {cropTargetLayer && (
+        <CropModal
+          layer={cropTargetLayer}
+          onClose={() => setCropTargetLayer(null)}
+          onApplyCrop={handleApplyCrop}
+        />
+      )}
 
-      <ShortcutsModal
-        isOpen={isShortcutsModalOpen}
-        onClose={() => setIsShortcutsModalOpen(false)}
-      />
+      {isShortcutsModalOpen && (
+        <ShortcutsModal
+          isOpen={isShortcutsModalOpen}
+          onClose={() => setIsShortcutsModalOpen(false)}
+        />
+      )}
     </div>
   );
 };

@@ -58,6 +58,7 @@ export interface ImageAsset {
   id: string;
   name: string;
   dataUrl: string;
+  thumbnailUrl?: string;
   naturalWidth: number;
   naturalHeight: number;
   createdAt: number;
@@ -96,6 +97,7 @@ export interface ImageLayer extends BaseLayer {
   type: 'image';
   assetId: string;
   dataUrl: string;
+  thumbnailUrl?: string;
   naturalWidth: number;
   naturalHeight: number;
   crop?: ImageCrop;

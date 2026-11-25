@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import {
   Lock,
   Crop,
@@ -61,7 +61,124 @@ interface DragState {
   aspectRatio: number;
 }
 
-export const PanoramicCanvas: React.FC<PanoramicCanvasProps> = ({
+interface CanvasLayerNodeProps {
+  layer: CanvasLayer;
+  isSelected: boolean;
+  isDragging: boolean;
+  onStartMove: (e: React.PointerEvent<HTMLElement>, layer: CanvasLayer) => void;
+  onSelect: (layerId: string) => void;
+  onOpenCrop: (layer: ImageLayer) => void;
+}
+
+const CanvasLayerNode = React.memo<CanvasLayerNodeProps>(
+  ({ layer, isSelected, isDragging, onStartMove, onSelect, onOpenCrop }) => {
+    const crop =
+      layer.type === 'image' && layer.crop
+        ? layer.crop
+        : { x: 0, y: 0, width: 1, height: 1 };
+
+    return (
+      <div
+        onPointerDown={(e) => onStartMove(e, layer)}
+        onClick={(e) => {
+          e.stopPropagation();
+          onSelect(layer.id);
+        }}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          if (layer.type === 'image') {
+            onOpenCrop(layer);
+          }
+        }}
+        style={{
+          position: 'absolute',
+          left: `${layer.x}px`,
+          top: `${layer.y}px`,
+          width: `${layer.width}px`,
+          height: `${layer.height}px`,
+          transform: `rotate(${layer.rotation}deg)`,
+          opacity: layer.opacity,
+          zIndex: layer.zIndex,
+          pointerEvents: 'auto',
+          willChange: isDragging ? 'left, top, width, height, transform' : undefined,
+          contain: 'layout style',
+        }}
+        className={`canvas-drag-handle group ${isDragging ? 'dragging' : ''} ${
+          !isSelected ? 'hover:outline hover:outline-2 hover:outline-accent/55' : ''
+        }`}
+      >
+        {layer.type === 'image' ? (
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              overflow: 'hidden',
+              borderRadius: `${layer.borderRadius || 0}px`,
+              border: layer.borderWidth
+                ? `${layer.borderWidth}px solid ${layer.borderColor || '#ffffff'}`
+                : undefined,
+              boxShadow: layer.shadowBlur
+                ? `0 12px ${layer.shadowBlur}px ${
+                    layer.shadowColor || 'rgba(0,0,0,0.45)'
+                  }`
+                : undefined,
+              transform: `scaleX(${layer.flipX ? -1 : 1}) scaleY(${
+                layer.flipY ? -1 : 1
+              })`,
+            }}
+            className="pointer-events-none select-none relative"
+          >
+            <img
+              src={layer.dataUrl}
+              alt={layer.name}
+              draggable={false}
+              decoding="async"
+              style={{
+                width: `${100 / Math.max(0.01, crop.width)}%`,
+                height: `${100 / Math.max(0.01, crop.height)}%`,
+                maxWidth: 'none',
+                maxHeight: 'none',
+                transform: `translate(${-crop.x * 100}%, ${-crop.y * 100}%)`,
+              }}
+              className="pointer-events-none select-none block"
+            />
+          </div>
+        ) : (
+          <div
+            style={{
+              width: '100%',
+              height: '100%',
+              backgroundColor: layer.backgroundColor || 'transparent',
+              borderRadius: `${layer.borderRadius || 12}px`,
+              color: layer.color,
+              fontSize: `${layer.fontSize}px`,
+              fontFamily: layer.fontFamily,
+              fontWeight: layer.fontWeight,
+              textAlign: layer.textAlign,
+              transform: `scaleX(${layer.flipX ? -1 : 1}) scaleY(${
+                layer.flipY ? -1 : 1
+              })`,
+              boxShadow: layer.shadowBlur
+                ? `0 8px ${layer.shadowBlur}px ${
+                    layer.shadowColor || 'rgba(0,0,0,0.45)'
+                  }`
+                : undefined,
+            }}
+            className="flex items-center justify-center p-6 whitespace-pre-wrap leading-tight pointer-events-none select-none"
+          >
+            {layer.text}
+          </div>
+        )}
+      </div>
+    );
+  },
+  (prev, next) =>
+    prev.layer === next.layer &&
+    prev.isSelected === next.isSelected &&
+    prev.isDragging === next.isDragging
+);
+
+export const PanoramicCanvas: React.FC<PanoramicCanvasProps> = React.memo(({
   project,
   zoom,
   setZoom,
@@ -105,9 +222,13 @@ export const PanoramicCanvas: React.FC<PanoramicCanvasProps> = ({
     };
   };
 
-  const sortedLayers = [...project.layers]
-    .filter((l) => l.visible)
-    .sort((a, b) => a.zIndex - b.zIndex);
+  const sortedLayers = useMemo(
+    () =>
+      [...project.layers]
+        .filter((l) => l.visible)
+        .sort((a, b) => a.zIndex - b.zIndex),
+    [project.layers]
+  );
 
   const startInteraction = (
     e: React.PointerEvent<HTMLElement>,
@@ -480,21 +601,59 @@ export const PanoramicCanvas: React.FC<PanoramicCanvasProps> = ({
     }
   };
 
+  const applyDragMoveRef = useRef(applyDragMove);
+  applyDragMoveRef.current = applyDragMove;
+  const rafIdRef = useRef<number | null>(null);
+  const pendingPointerRef = useRef<{
+    clientX: number;
+    clientY: number;
+    shiftKey: boolean;
+  } | null>(null);
+
   const handlePointerMove = (e: React.PointerEvent<HTMLElement>) => {
     if (!dragState) return;
-    applyDragMove(e.clientX, e.clientY, e.shiftKey);
+    pendingPointerRef.current = {
+      clientX: e.clientX,
+      clientY: e.clientY,
+      shiftKey: e.shiftKey,
+    };
+    if (rafIdRef.current === null) {
+      rafIdRef.current = requestAnimationFrame(() => {
+        rafIdRef.current = null;
+        const p = pendingPointerRef.current;
+        if (p) applyDragMoveRef.current(p.clientX, p.clientY, p.shiftKey);
+      });
+    }
   };
 
   const endInteraction = () => {
+    if (rafIdRef.current !== null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
+    pendingPointerRef.current = null;
     setDragState(null);
     setActiveSnapX(null);
     setActiveSnapY(null);
   };
 
+  const isDraggingActive = dragState !== null;
+
   useEffect(() => {
-    if (!dragState) return;
+    if (!isDraggingActive) return;
     const onWinPointerMove = (ev: PointerEvent) => {
-      applyDragMove(ev.clientX, ev.clientY, ev.shiftKey);
+      pendingPointerRef.current = {
+        clientX: ev.clientX,
+        clientY: ev.clientY,
+        shiftKey: ev.shiftKey,
+      };
+      if (rafIdRef.current === null) {
+        rafIdRef.current = requestAnimationFrame(() => {
+          rafIdRef.current = null;
+          const p = pendingPointerRef.current;
+          if (p) applyDragMoveRef.current(p.clientX, p.clientY, p.shiftKey);
+        });
+      }
     };
     const onWinPointerUp = () => {
       endInteraction();
@@ -503,11 +662,15 @@ export const PanoramicCanvas: React.FC<PanoramicCanvasProps> = ({
     window.addEventListener('pointerup', onWinPointerUp);
     window.addEventListener('pointercancel', onWinPointerUp);
     return () => {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
       window.removeEventListener('pointermove', onWinPointerMove);
       window.removeEventListener('pointerup', onWinPointerUp);
       window.removeEventListener('pointercancel', onWinPointerUp);
     };
-  });
+  }, [isDraggingActive]);
 
   const handleWheel = (e: React.WheelEvent<HTMLElement>) => {
     if (e.ctrlKey || e.metaKey) {
@@ -629,116 +792,19 @@ export const PanoramicCanvas: React.FC<PanoramicCanvasProps> = ({
             }}
             className="relative overflow-hidden"
           >
-            {sortedLayers.map((layer) => {
-              const crop =
-                layer.type === 'image' && layer.crop
-                  ? layer.crop
-                  : { x: 0, y: 0, width: 1, height: 1 };
-
-              return (
-                <div
-                  key={layer.id}
-                  onPointerDown={(e) => startInteraction(e, layer, 'move')}
-                  onPointerMove={handlePointerMove}
-                  onPointerUp={endInteraction}
-                  onLostPointerCapture={endInteraction}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSelectLayer(layer.id);
-                  }}
-                  onDoubleClick={(e) => {
-                    e.stopPropagation();
-                    if (layer.type === 'image') {
-                      onOpenCropModal(layer);
-                    }
-                  }}
-                  style={{
-                    position: 'absolute',
-                    left: `${layer.x}px`,
-                    top: `${layer.y}px`,
-                    width: `${layer.width}px`,
-                    height: `${layer.height}px`,
-                    transform: `rotate(${layer.rotation}deg)`,
-                    opacity: layer.opacity,
-                    zIndex: layer.zIndex,
-                    pointerEvents: 'auto',
-                  }}
-                  className={`canvas-drag-handle group ${
-                    dragState?.layerId === layer.id ? 'dragging' : ''
-                  } ${
-                    layer.id !== selectedLayerId
-                      ? 'hover:outline hover:outline-2 hover:outline-accent/55'
-                      : ''
-                  }`}
-                >
-                  {layer.type === 'image' ? (
-                    <div
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        overflow: 'hidden',
-                        borderRadius: `${layer.borderRadius || 0}px`,
-                        border: layer.borderWidth
-                          ? `${layer.borderWidth}px solid ${
-                              layer.borderColor || '#ffffff'
-                            }`
-                          : undefined,
-                        boxShadow: layer.shadowBlur
-                          ? `0 12px ${layer.shadowBlur}px ${
-                              layer.shadowColor || 'rgba(0,0,0,0.45)'
-                            }`
-                          : undefined,
-                        transform: `scaleX(${layer.flipX ? -1 : 1}) scaleY(${
-                          layer.flipY ? -1 : 1
-                        })`,
-                      }}
-                      className="pointer-events-none select-none relative"
-                    >
-                      <img
-                        src={layer.dataUrl}
-                        alt={layer.name}
-                        draggable={false}
-                        style={{
-                          width: `${100 / Math.max(0.01, crop.width)}%`,
-                          height: `${100 / Math.max(0.01, crop.height)}%`,
-                          maxWidth: 'none',
-                          maxHeight: 'none',
-                          transform: `translate(${-crop.x * 100}%, ${
-                            -crop.y * 100
-                          }%)`,
-                        }}
-                        className="pointer-events-none select-none block"
-                      />
-                    </div>
-                  ) : (
-                    <div
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        backgroundColor: layer.backgroundColor || 'transparent',
-                        borderRadius: `${layer.borderRadius || 12}px`,
-                        color: layer.color,
-                        fontSize: `${layer.fontSize}px`,
-                        fontFamily: layer.fontFamily,
-                        fontWeight: layer.fontWeight,
-                        textAlign: layer.textAlign,
-                        transform: `scaleX(${layer.flipX ? -1 : 1}) scaleY(${
-                          layer.flipY ? -1 : 1
-                        })`,
-                        boxShadow: layer.shadowBlur
-                          ? `0 8px ${layer.shadowBlur}px ${
-                              layer.shadowColor || 'rgba(0,0,0,0.45)'
-                            }`
-                          : undefined,
-                      }}
-                      className="flex items-center justify-center p-6 whitespace-pre-wrap leading-tight pointer-events-none select-none"
-                    >
-                      {layer.text}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {sortedLayers.map((layer) => (
+              <CanvasLayerNode
+                key={layer.id}
+                layer={layer}
+                isSelected={layer.id === selectedLayerId}
+                isDragging={dragState?.layerId === layer.id}
+                onStartMove={(e, targetLayer) =>
+                  startInteraction(e, targetLayer, 'move')
+                }
+                onSelect={onSelectLayer}
+                onOpenCrop={onOpenCropModal}
+              />
+            ))}
 
             {/* Subtle Seam Divider Guides */}
             {project.showSeamGuides &&
@@ -1051,4 +1117,4 @@ export const PanoramicCanvas: React.FC<PanoramicCanvasProps> = ({
       </div>
     </main>
   );
-};
+});

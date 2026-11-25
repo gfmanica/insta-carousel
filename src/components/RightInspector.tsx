@@ -42,7 +42,7 @@ interface RightInspectorProps {
   onResizeLayersPanelHeight: (newHeight: number) => void;
 }
 
-export const RightInspector: React.FC<RightInspectorProps> = ({
+export const RightInspector: React.FC<RightInspectorProps> = React.memo(({
   project,
   selectedLayerId,
   onSelectLayer,
@@ -792,9 +792,11 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
                     <GripVertical className="w-3.5 h-3.5 text-zinc-500 shrink-0 cursor-grab active:cursor-grabbing" />
                     {layer.type === 'image' ? (
                       <img
-                        src={layer.dataUrl}
+                        src={layer.thumbnailUrl || layer.dataUrl}
                         alt=""
                         draggable={false}
+                        decoding="async"
+                        loading="lazy"
                         className="w-6 h-6 rounded-xs object-cover bg-studio-bg shrink-0"
                       />
                     ) : (
@@ -886,4 +888,4 @@ export const RightInspector: React.FC<RightInspectorProps> = ({
       </div>
     </aside>
   );
-};
+});

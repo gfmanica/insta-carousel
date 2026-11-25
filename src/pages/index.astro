@@ -19,6 +19,14 @@ import { CarouselStudio } from '../components/CarouselStudio';
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
+    <script is:inline>
+      if (new URLSearchParams(window.location.search).get('scan') === '1') {
+        const s = document.createElement('script');
+        s.src = 'https://unpkg.com/react-scan/dist/auto.global.js';
+        s.crossOrigin = 'anonymous';
+        document.head.appendChild(s);
+      }
+    </script>
   </head>
   <body class="bg-studio-bg text-zinc-100 antialiased selection:bg-accent selection:text-white">
     <CarouselStudio client:only="react" />

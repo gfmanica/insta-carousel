@@ -39,7 +39,7 @@ interface TopToolbarProps {
   onToggleRightSidebar: () => void;
 }
 
-export const TopToolbar: React.FC<TopToolbarProps> = ({
+export const TopToolbar: React.FC<TopToolbarProps> = React.memo(({
   project,
   zoom,
   setZoom,
@@ -342,4 +342,15 @@ export const TopToolbar: React.FC<TopToolbarProps> = ({
       </div>
     </header>
   );
-};
+}, (prev, next) =>
+  prev.zoom === next.zoom &&
+  prev.saveStatus === next.saveStatus &&
+  prev.canUndo === next.canUndo &&
+  prev.canRedo === next.canRedo &&
+  prev.isLeftSidebarOpen === next.isLeftSidebarOpen &&
+  prev.isRightSidebarOpen === next.isRightSidebarOpen &&
+  prev.project.title === next.project.title &&
+  prev.project.formatId === next.project.formatId &&
+  prev.project.slidesCount === next.project.slidesCount &&
+  prev.project.showSeamGuides === next.project.showSeamGuides
+);

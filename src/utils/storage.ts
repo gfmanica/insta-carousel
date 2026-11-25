@@ -2,6 +2,15 @@ import { get, set, del } from 'idb-keyval';
 import type { CarouselProject, ImageAsset, ImageLayer } from '../types/carousel';
 
 const STORAGE_KEY = 'insta_carousel_studio_project_v2';
+const ASSET_PREFIX = 'insta_carousel_asset_v1_';
+
+interface StoredAssetPayload {
+  dataUrl: string;
+  thumbnailUrl?: string;
+}
+
+// Tracks which asset IDs have already been written to IndexedDB in this session
+const persistedAssetIds = new Set<string>();
 
 // Clean architectural / editorial SVG composition for initial canvas
 function createEditorialSampleSvg(
@@ -182,11 +191,75 @@ export function createDefaultProject(): CarouselProject {
   };
 }
 
+async function hydrateProjectAssets(
+  project: CarouselProject
+): Promise<CarouselProject> {
+  const assetMap = new Map<string, StoredAssetPayload>();
+
+  // Load any externalized assets from IndexedDB in parallel
+  const missingIds = new Set<string>();
+  for (const a of project.assets) {
+    if (!a.dataUrl) {
+      missingIds.add(a.id);
+    } else {
+      assetMap.set(a.id, { dataUrl: a.dataUrl, thumbnailUrl: a.thumbnailUrl });
+    }
+  }
+  for (const l of project.layers) {
+    if (l.type === 'image' && !l.dataUrl && l.assetId) {
+      missingIds.add(l.assetId);
+    }
+  }
+
+  if (missingIds.size > 0) {
+    await Promise.all(
+      Array.from(missingIds).map(async (id) => {
+        try {
+          const payload = await get<StoredAssetPayload>(`${ASSET_PREFIX}${id}`);
+          if (payload?.dataUrl) {
+            assetMap.set(id, payload);
+            persistedAssetIds.add(id);
+          }
+        } catch {
+          // ignore individual asset read failure
+        }
+      })
+    );
+  }
+
+  const hydratedAssets = project.assets.map((a) => {
+    const found = assetMap.get(a.id);
+    if (!found) return a;
+    return {
+      ...a,
+      dataUrl: a.dataUrl || found.dataUrl,
+      thumbnailUrl: a.thumbnailUrl || found.thumbnailUrl,
+    };
+  });
+
+  const hydratedLayers = project.layers.map((l) => {
+    if (l.type !== 'image') return l;
+    const found = assetMap.get(l.assetId);
+    if (!found) return l;
+    return {
+      ...l,
+      dataUrl: l.dataUrl || found.dataUrl,
+      thumbnailUrl: l.thumbnailUrl || found.thumbnailUrl,
+    };
+  });
+
+  return {
+    ...project,
+    assets: hydratedAssets,
+    layers: hydratedLayers,
+  };
+}
+
 export async function loadProjectFromBrowser(): Promise<CarouselProject> {
   try {
     const saved = await get<CarouselProject>(STORAGE_KEY);
     if (saved && saved.id && Array.isArray(saved.layers)) {
-      return saved;
+      return await hydrateProjectAssets(saved);
     }
   } catch (err) {
     console.warn('IndexedDB indisponível, tentando localStorage:', err);
@@ -206,12 +279,68 @@ export async function loadProjectFromBrowser(): Promise<CarouselProject> {
 }
 
 export async function saveProjectToBrowser(project: CarouselProject): Promise<void> {
-  const updated = { ...project, updatedAt: Date.now() };
   try {
-    await set(STORAGE_KEY, updated);
+    // 1. Persist only newly added / unpersisted asset binaries once under their own IndexedDB key
+    const assetWrites: Promise<void>[] = [];
+    const knownAssetIds = new Set<string>();
+
+    for (const a of project.assets) {
+      knownAssetIds.add(a.id);
+      if (a.dataUrl && !persistedAssetIds.has(a.id)) {
+        const id = a.id;
+        assetWrites.push(
+          set(`${ASSET_PREFIX}${id}`, {
+            dataUrl: a.dataUrl,
+            thumbnailUrl: a.thumbnailUrl,
+          }).then(() => {
+            persistedAssetIds.add(id);
+          })
+        );
+      }
+    }
+
+    for (const l of project.layers) {
+      if (l.type === 'image' && l.assetId && l.dataUrl && !persistedAssetIds.has(l.assetId)) {
+        const id = l.assetId;
+        knownAssetIds.add(id);
+        assetWrites.push(
+          set(`${ASSET_PREFIX}${id}`, {
+            dataUrl: l.dataUrl,
+            thumbnailUrl: l.thumbnailUrl,
+          }).then(() => {
+            persistedAssetIds.add(id);
+          })
+        );
+      }
+    }
+
+    if (assetWrites.length > 0) {
+      await Promise.all(assetWrites);
+    }
+
+    // 2. Save a tiny lightweight metadata-only project record (strip heavy base64 strings already stored in ASSET_PREFIX)
+    const slimProject: CarouselProject = {
+      ...project,
+      updatedAt: Date.now(),
+      assets: project.assets.map((a) =>
+        persistedAssetIds.has(a.id)
+          ? { ...a, dataUrl: '', thumbnailUrl: undefined }
+          : a
+      ),
+      layers: project.layers.map((l) =>
+        l.type === 'image' && persistedAssetIds.has(l.assetId)
+          ? { ...l, dataUrl: '', thumbnailUrl: undefined }
+          : l
+      ),
+    };
+
+    await set(STORAGE_KEY, slimProject);
   } catch (err) {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ ...project, updatedAt: Date.now() })
+      );
     } catch (e) {
       console.error('Falha ao salvar no navegador:', e);
     }
@@ -221,6 +350,10 @@ export async function saveProjectToBrowser(project: CarouselProject): Promise<vo
 export async function clearProjectInBrowser(): Promise<CarouselProject> {
   const fresh = createDefaultProject();
   try {
+    for (const id of persistedAssetIds) {
+      await del(`${ASSET_PREFIX}${id}`);
+    }
+    persistedAssetIds.clear();
     await del(STORAGE_KEY);
     localStorage.removeItem(STORAGE_KEY);
   } catch (e) {
